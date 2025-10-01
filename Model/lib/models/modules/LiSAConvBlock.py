@@ -1,14 +1,14 @@
-# LiSAConvBlock.py
 """
 @author   :   andredalwin    
-@Contact  :   hello@andredalwin.com
-@DateTime :   2025/05/31
+@modified :   chuasharmaine
+@DateTime :   2025/10/01
 @Version  :   1.0
 """
+
 import torch
 import torch.nn as nn
 
-from lib.models.modules.LiSASEBlock import SEBlock
+from lib.models.modules.LiSAECABlock import ECABlock
 
 class ConvBlock(torch.nn.Module):
     def __init__(
@@ -20,7 +20,7 @@ class ConvBlock(torch.nn.Module):
             batch_norm=True,
             preactivation=False,
             dim="2d",
-            use_se=True
+            use_eca=True
     ):
         super().__init__()
 
@@ -74,15 +74,15 @@ class ConvBlock(torch.nn.Module):
 
         self.conv = torch.nn.Sequential(*layers)
 
-        # Implement SE
-        self.use_se = use_se
-        if use_se:
-            self.se_block = SEBlock(out_channel, reduction=4, dim=dim)
+        # Implement ECA
+        self.use_eca = use_eca
+        if use_eca:
+            self.eca_block = ECABlock(out_channel, k_size=3)
 
     def forward(self, x):
         x = self.conv(x)
-        if self.use_se:
-            x = self.se_block(x)
+        if self.use_eca:
+            x = self.eca_block(x)
         return x
 
 class SingleConvBlock(nn.Module):

@@ -1,3 +1,10 @@
+"""
+@author   :   andredalwin    
+@modified :   chuasharmaine
+@DateTime :   2025/10/01
+@Version  :   1.0
+"""
+
 import torch
 import torch.nn as nn
 
