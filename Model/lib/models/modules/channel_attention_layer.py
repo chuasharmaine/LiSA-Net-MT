@@ -9,6 +9,7 @@ def conv3x3(in_planes, out_planes, stride=1, bias=False, group=1):
 class ECA_Conv_Block(nn.Module):
     """
     ECA-based convolution block (replacement for SE_Conv_Block).
+    https://github.com/BangguWu/ECANet/blob/master/models/eca_module.py
 
     This block enhances feature maps using Efficient Channel Attention (ECA),
     while keeping parameter overhead low. It follows a bottleneck-style design:
