@@ -1,17 +1,41 @@
+import torch
 import torch.nn as nn
 
-
-# # SE block add to U-net
 def conv3x3(in_planes, out_planes, stride=1, bias=False, group=1):
     """3x3 convolution with padding"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,padding=1, groups=group, bias=bias)
+    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, groups=group, bias=bias)
 
 
-class SE_Conv_Block(nn.Module):
+class ECA_Conv_Block(nn.Module):
+    """
+    ECA-based convolution block (replacement for SE_Conv_Block).
+
+    This block enhances feature maps using Efficient Channel Attention (ECA),
+    while keeping parameter overhead low. It follows a bottleneck-style design:
+    - Conv1 (3x3) -> BN -> ReLU
+    - Conv2 (3x3, channel expansion) -> BN
+    - Apply ECA attention on Conv2 output
+    - Residual connection (with projection if input/output channels differ)
+    - Conv3 (3x3, channel reduction) -> BN -> ReLU
+    - Optional Dropout
+
+    Args:
+        inplanes (int): Number of input channels
+        planes (int): Base number of output channels (before expansion)
+        stride (int): Stride for Conv1 and optional downsampling
+        downsample (nn.Module, optional): Unused here (kept for compatibility)
+        drop_out (bool): Whether to apply 2D dropout at the end
+        k_size (int): Kernel size for ECA 1D convolution
+    Returns:
+        out (Tensor): Transformed feature map, shape (B, planes, H, W)
+        y (Tensor): ECA attention weights, shape (B, planes*2, 1, 1)
+    """
+
     expansion = 4
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None, drop_out=False):
-        super(SE_Conv_Block, self).__init__()
+    def __init__(self, inplanes, planes, stride=1, downsample=None, drop_out=False, k_size=3):
+        super(ECA_Conv_Block, self).__init__()
+
         self.conv1 = conv3x3(inplanes, planes, stride)
         self.bn1 = nn.BatchNorm2d(planes)
         self.relu = nn.ReLU(inplace=True)
@@ -19,28 +43,15 @@ class SE_Conv_Block(nn.Module):
         self.bn2 = nn.BatchNorm2d(planes * 2)
         self.conv3 = conv3x3(planes * 2, planes)
         self.bn3 = nn.BatchNorm2d(planes)
-        self.downsample = downsample
         self.stride = stride
         self.dropout = drop_out
 
-        if planes <= 16:
-            self.globalAvgPool = nn.AvgPool2d((224, 224), stride=1)  # (224, 300) for ISIC2018
-            self.globalMaxPool = nn.MaxPool2d((224, 224), stride=1)
-        elif planes == 32:
-            self.globalAvgPool = nn.AvgPool2d((112, 112), stride=1)  # (112, 150) for ISIC2018
-            self.globalMaxPool = nn.MaxPool2d((112, 112), stride=1)
-        elif planes == 64:
-            self.globalAvgPool = nn.AvgPool2d((56, 56), stride=1)    # (56, 75) for ISIC2018
-            self.globalMaxPool = nn.MaxPool2d((56, 56), stride=1)
-        elif planes == 128:
-            self.globalAvgPool = nn.AvgPool2d((28, 28), stride=1)    # (28, 37) for ISIC2018
-            self.globalMaxPool = nn.MaxPool2d((28, 28), stride=1)
-        elif planes == 256:
-            self.globalAvgPool = nn.AvgPool2d((14, 14), stride=1)    # (14, 18) for ISIC2018
-            self.globalMaxPool = nn.MaxPool2d((14, 14), stride=1)
-
-        self.fc1 = nn.Linear(in_features=planes * 2, out_features=round(planes / 2))
-        self.fc2 = nn.Linear(in_features=round(planes / 2), out_features=planes * 2)
+        # ECA attention
+        self.global_avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.eca_conv = nn.Conv1d(
+            1, 1, kernel_size=k_size,
+            padding=(k_size - 1) // 2, bias=False
+        )
         self.sigmoid = nn.Sigmoid()
 
         self.downchannel = None
@@ -61,31 +72,13 @@ class SE_Conv_Block(nn.Module):
         if self.downchannel is not None:
             residual = self.downchannel(x)
 
-        original_out = out
-        out1 = out
-        # For global average pool
-        out = self.globalAvgPool(out)
-        out = out.view(out.size(0), -1)
-        out = self.fc1(out)
-        out = self.relu(out)
-        out = self.fc2(out)
-        out = self.sigmoid(out)
-        out = out.view(out.size(0), out.size(1), 1, 1)
-        avg_att = out
-        out = out * original_out
-        # For global maximum pool
-        out1 = self.globalMaxPool(out1)
-        out1 = out1.view(out1.size(0), -1)
-        out1 = self.fc1(out1)
-        out1 = self.relu(out1)
-        out1 = self.fc2(out1)
-        out1 = self.sigmoid(out1)
-        out1 = out1.view(out1.size(0), out1.size(1), 1, 1)
-        max_att = out1
-        out1 = out1 * original_out
+        # ECA channel attention
+        y = self.global_avg_pool(out)                  # (B, C, 1, 1)
+        y = y.squeeze(-1).transpose(-1, -2)           # (B, 1, C)
+        y = self.eca_conv(y)                          # 1D conv across channels
+        y = self.sigmoid(y).transpose(-1, -2).unsqueeze(-1)  # reshape back to (B, C, 1, 1)
+        out = out * y.expand_as(out)                  # apply attention weights
 
-        att_weight = avg_att + max_att
-        out += out1
         out += residual
         out = self.relu(out)
 
@@ -95,4 +88,4 @@ class SE_Conv_Block(nn.Module):
         if self.dropout:
             out = nn.Dropout2d(0.5)(out)
 
-        return out, att_weight
+        return out, y
