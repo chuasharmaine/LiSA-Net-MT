@@ -47,6 +47,8 @@ from .MobileNetV2 import MobileNetV2
 
 from .PMFSNet import PMFSNet
 from .LiSANet import LiSANet
+from .EGEUNet import EGEUNet
+
 
 
 def get_model_optimizer_lr_scheduler(opt):
@@ -210,6 +212,9 @@ def get_model_optimizer_lr_scheduler(opt):
 
         elif opt["model_name"] == "AttU_Net":
             model = AttU_Net(img_ch=opt["in_channels"], output_ch=opt["classes"])
+
+        elif opt["model_name"] == "EGEUNet":
+            model = EGEUNet(input_channels=opt["in_channels"], num_classes=opt["classes"])
 
         else:
             raise RuntimeError(f"No {opt['model_name']} model available on {opt['dataset_name']} dataset")
@@ -439,6 +444,9 @@ def get_model(opt):
 
         elif opt["model_name"] == "AttU_Net":
             model = AttU_Net(img_ch=opt["in_channels"], output_ch=opt["classes"])
+
+        elif opt["model_name"] == "EGEUNet":
+            model = EGEUNet(input_channels=opt["in_channels"], num_classes=opt["classes"])
 
         else:
             raise RuntimeError(f"No {opt['model_name']} model available on {opt['dataset_name']} dataset")
