@@ -7,6 +7,7 @@
 """
 import os
 import argparse
+from glob import glob
 
 import torch
 
@@ -236,9 +237,11 @@ def parse_args():
     parser.add_argument("--pretrain_weight", type=str, default="pretrain/LiSANet-1000-K1.pth", help="pre-trained weight file path")
     parser.add_argument("--dimension", type=str, default="2d", help="dimension of dataset images and models")
     parser.add_argument("--scaling_version", type=str, default="BASIC", help="scaling version of PMFSNet")
-    parser.add_argument("--image_path", type=str, default="pretrain/ISIC_0000013.jpg", help="path of inferred image")
-    args = parser.parse_args()
-    return args
+    parser.add_argument("--image_path", type=str, default=None, help="path of single inferred image")
+    parser.add_argument("--images_dir", type=str, default=None, help="directory containing images for batch inference")
+    parser.add_argument("--segmentation", action="store_true", help="Force segmentation inference")
+    parser.add_argument("--classification", action="store_true", help="Force classification inference")
+    return parser.parse_args()
 
 
 def main():
@@ -264,8 +267,8 @@ def main():
     params["pretrain"] = args.pretrain_weight
     params["dimension"] = args.dimension
     params["scaling_version"] = args.scaling_version
-    if args.image_path is None:
-        raise RuntimeError("image path cannot be None")
+    if args.image_path is None and args.images_dir is None:
+        raise RuntimeError("Either image_path or images_dir must be provided")
 
     # launch initialization
     os.environ["CUDA_VISIBLE_DEVICES"] = params["CUDA_VISIBLE_DEVICES"]
@@ -284,6 +287,20 @@ def main():
     model = models.get_model(params)
     print("Complete the initialization of model:{}".format(params["model_name"]))
 
+    # Detect model task 
+    if not args.segmentation and not args.classification:
+        params["segmentation"] = hasattr(model, "segmentation_head")
+        params["classification"] = hasattr(model, "classification_head")
+    else:
+        if args.segmentation:
+            params["segmentation"] = True
+            params["classification"] = False
+        elif args.classification:
+            params["segmentation"] = False
+            params["classification"] = True
+
+    print(f"Segmentation: {params['segmentation']}, Classification: {params['classification']}")
+
     # initialize the tester
     tester = testers.get_tester(params, model)
     print("Complete the initialization of tester")
@@ -292,8 +309,19 @@ def main():
     tester.load()
     print("Complete loading training weights")
 
-    # evaluate valid set
-    tester.inference(args.image_path)
+    # perform inference
+    if args.image_path:
+        # single image inference
+        print(f"Performing inference on single image: {args.image_path}")
+        tester.inference(args.image_path)
+    elif args.images_dir:
+        # Get all image paths from the specified directory
+        image_paths = glob(os.path.join(args.images_dir, '*'))
+
+        # Perform inference on each image
+        for image_path in image_paths:
+            print(f"Performing inference on image: {image_path}")
+            tester.inference(image_path)
 
 
 if __name__ == '__main__':

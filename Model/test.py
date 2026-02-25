@@ -188,11 +188,19 @@ params_ISIC_2018 = {
     # —————————————————————————————————————————————    Model     ——————————————————————————————————————————————————————
     "model_name": "PMFSNet",
     "in_channels": 3,
-    "classes": 2,
+    "seg_classes": 2,
+    "cls_classes": 7,
+    "segmentation": True, 
+    "classification": True,
     "index_to_class_dict":
         {
-            0: "background",
-            1: "foreground"
+            0: "MEL",
+            1: "NV",
+            2: "BCC",
+            3: "AKIEC",
+            4: "BKL",
+            5: "DF",
+            6: "VASC"
         },
     "resume": None,
     "pretrain": None,
@@ -213,7 +221,10 @@ params_ISIC_2018 = {
     "patience": 20,
     "factor": 0.3,
     # ————————————————————————————————————————————    Loss And Metric     ———————————————————————————————————————————————————————
-    "metric_names": ["DSC", "IoU", "JI", "ACC"],
+    "metric_names": { 
+        "segmentation": ["DSC", "IoU", "JI", "ACC"],
+        "classification": ["ACC", "ROC-AUC", "F1"]
+    },
     "loss_function_name": "DiceLoss",
     "class_weight": [0.029, 1 - 0.029],
     "sigmoid_normalization": False,
@@ -237,7 +248,21 @@ def parse_args():
     parser.add_argument("--pretrain_weight", type=str, default=None, help="pre-trained weight file path")
     parser.add_argument("--dimension", type=str, default="3d", help="dimension of dataset images and models")
     parser.add_argument("--scaling_version", type=str, default="TINY", help="scaling version of PMFSNet")
+    parser.add_argument("--task", type=str, default="multitask", choices=["segmentation", "classification", "multitask"], help="which task to perform"
+        )
     args = parser.parse_args()
+
+    if args.dataset == "ISIC-2018":
+        params = params_ISIC_2018
+        if args.task == "segmentation":
+            params["segmentation"] = True
+            params["classification"] = False
+        elif args.task == "classification":
+            params["segmentation"] = False
+            params["classification"] = True
+        else: 
+            params["segmentation"] = True
+            params["classification"] = True
     return args
 
 

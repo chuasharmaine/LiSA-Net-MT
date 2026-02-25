@@ -195,8 +195,10 @@ class ISIC2018Trainer:
 
                 if self.opt["segmentation"] and self.opt["classification"]:
                     seg_out, _ = output
-                else:
+                elif self.opt["segmentation"]:
                     seg_out = output
+                else:
+                    seg_out = None
 
                 self.calculate_metric_and_update_statistcs(seg_out.cpu(), target.cpu(), len(target), mode="valid")
 
