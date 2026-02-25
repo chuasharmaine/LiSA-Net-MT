@@ -61,7 +61,17 @@ def get_metric(opt):
                 metrics[metric_name] = ISIC2018.JI(num_classes=opt["classes"], sigmoid_normalization=opt["sigmoid_normalization"])
 
             elif metric_name == "ACC":
-                metrics[metric_name] = ISIC2018.ACC(num_classes=opt["classes"], sigmoid_normalization=opt["sigmoid_normalization"])
+                # segmentation or classification ACC
+                if opt.get("segmentation", True):
+                    metrics[metric_name] = ISIC2018.ACCSEG(num_classes=opt["classes"], sigmoid_normalization=opt["sigmoid_normalization"])
+                elif opt.get("classification", False):
+                    metrics[metric_name] = ISIC2018.ACCCLS()
+            
+            elif metric_name == "AUC_ROC":
+                metrics[metric_name] = ISIC2018.AUC_ROC(num_classes=opt["classes"], sigmoid_normalization=opt["sigmoid_normalization"])
+
+            elif metric_name == "F1_MACRO":
+                metrics[metric_name] = ISIC2018.F1_MACRO(num_classes=opt["classes"], sigmoid_normalization=opt["sigmoid_normalization"])
 
             else:
                 raise RuntimeError(f"No {metric_name} metric available on {opt['dataset_name']} dataset")
