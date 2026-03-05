@@ -10,3 +10,5 @@ from .DICE import *
 from .IoU import *
 from .JI import *
 from .ACC import *
+from .AUC_ROC import *
+from .F1_MACRO import *

@@ -37,11 +37,18 @@ params_ISIC_2018 = {
     # —————————————————————————————————————————————    Model     ——————————————————————————————————————————————————————
     "model_name": "PMFSNet",
     "in_channels": 3,
-    "classes": 2,
+    "classes": 7,
+    "segmentation": True, 
+    "classification": True, 
     "index_to_class_dict":
     {
-        0: "background",
-        1: "foreground"
+        0: "Melanoma",
+        1: "Melanocytic nevus",
+        2: "Basal cell carcinoma",
+        3: "Actinic keratosis",
+        4: "Benign keratosis",
+        5: "Dermatofibroma",
+        6: "Vascular lesion"
     },
     "resume": None,
     "pretrain": None,
@@ -62,7 +69,7 @@ params_ISIC_2018 = {
     "patience": 20,
     "factor": 0.3,
     # ————————————————————————————————————————————    Loss And Metric     ———————————————————————————————————————————————————————
-    "metric_names": ["DSC", "IoU", "JI", "ACC"],
+    "metric_names": ["DSC", "IoU", "JI", "ACC", "AUC_ROC", "F1_MACRO"],
     "loss_function_name": "DiceLoss",
     "class_weight": [0.029, 1-0.029],
     "sigmoid_normalization": False,
@@ -86,6 +93,7 @@ def parse_args():
     parser.add_argument("--dimension", type=str, default="2d", help="dimension of dataset images and models")
     parser.add_argument("--scaling_version", type=str, default="BASIC", help="scaling version of PMFSNet")
     parser.add_argument("--epoch", type=int, default=150, help="training epoch")
+    parser.add_argument("--task", type=str, default="multitask", choices=["segmentation", "classification", "multitask"], help="which task to perform")
     args = parser.parse_args()
     return args
 
@@ -129,6 +137,22 @@ def main():
     # initialize the model, optimizer, and lr_scheduler
     model, optimizer, lr_scheduler = models.get_model_optimizer_lr_scheduler(params)
     print("Complete the initialization of model:{}, optimizer:{}, and lr_scheduler:{}".format(params["model_name"], params["optimizer_name"], params["lr_scheduler_name"]))
+
+    # detect model tasks
+    # set task mode from CLI
+    if args.task == "segmentation":
+        params["segmentation"] = True
+        params["classification"] = False
+
+    elif args.task == "classification":
+        params["segmentation"] = False
+        params["classification"] = True
+
+    elif args.task == "multitask":
+        params["segmentation"] = True
+        params["classification"] = True
+
+    print(f"Segmentation training: {params['segmentation']}, Classification training: {params['classification']}")
 
     # initialize the loss function
     loss_function = losses.get_loss_function(params)
