@@ -37,7 +37,7 @@ class ISIC2018Tester:
             transforms.Normalize(mean=self.opt["normalize_means"], std=self.opt["normalize_stds"])
         ])
 
-        image_pil = Image.open(image_path)
+        image_pil = Image.open(image_path).convert("RGB")
         w, h = image_pil.size
         image = test_transforms(image_pil)
 
@@ -73,10 +73,27 @@ class ISIC2018Tester:
         self.model.eval()
 
         with torch.no_grad():
-            for input_tensor, target in tqdm(dataloader, leave=True):
-                input_tensor, target = input_tensor.to(self.device), target.to(self.device)
+            for batch in tqdm(dataloader, leave=True):
+
+                if self.opt["segmentation"] and self.opt["classification"]:
+                    input_tensor, seg_target, cls_target = batch
+                elif self.opt["segmentation"]:
+                    input_tensor, seg_target = batch
+                    cls_target = None
+                elif self.opt["classification"]:
+                    input_tensor, cls_target = batch
+                    seg_target = None
+
+                input_tensor = input_tensor.to(self.device)
+
+                if seg_target is not None:
+                    seg_target = seg_target.to(self.device)
+
+                if cls_target is not None:
+                    cls_target = cls_target.to(self.device)
+
                 output = self.model(input_tensor)
-                
+
                 seg_out, cls_out = None, None
                 if self.opt["segmentation"] and self.opt["classification"]:
                     seg_out, cls_out = output
@@ -86,9 +103,20 @@ class ISIC2018Tester:
                     cls_out = output
 
                 if seg_out is not None:
-                    self.calculate_metric_and_update_statistcs(seg_out.cpu(), target.cpu(), len(target), task="segmentation")
+                    self.calculate_metric_and_update_statistcs(
+                        seg_out.cpu(),
+                        seg_target.cpu(),
+                        len(seg_target),
+                        task="segmentation"
+                    )
+
                 if cls_out is not None:
-                    self.calculate_metric_and_update_statistcs(cls_out.cpu(), target.cpu(), len(target), task="classification")
+                    self.calculate_metric_and_update_statistcs(
+                        cls_out.cpu(),
+                        cls_target.cpu(),
+                        len(cls_target),
+                        task="classification"
+                    )
 
         if self.opt["segmentation"]:
             class_IoU = self.statistics_dict["total_area_intersect"] / self.statistics_dict["total_area_union"]
@@ -104,10 +132,15 @@ class ISIC2018Tester:
             print("valid_ACC_cls:{:.6f}  valid_AUC_ROC:{:.6f}  valid_F1_MACRO:{:.6f}".format(ACC_cls, AUC_ROC, F1_MACRO))
 
     def calculate_metric_and_update_statistcs(self, output, target, cur_batch_size, task="segmentation"):
-        mask = torch.zeros(self.opt["classes"])
-        unique_index = torch.unique(target).int()
-        for index in unique_index:
-            mask[index] = 1
+
+        if task == "segmentation":
+            mask = torch.zeros(self.opt["classes"])
+            unique_index = torch.unique(target).int()
+            for index in unique_index:
+                mask[index] = 1
+        else:
+            mask = torch.ones(self.opt["classes"])
+
         self.statistics_dict["count"] += cur_batch_size
         for i, class_name in self.opt["index_to_class_dict"].items():
             if mask[i] == 1:

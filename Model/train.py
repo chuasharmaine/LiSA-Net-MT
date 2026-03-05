@@ -93,21 +93,8 @@ def parse_args():
     parser.add_argument("--dimension", type=str, default="2d", help="dimension of dataset images and models")
     parser.add_argument("--scaling_version", type=str, default="BASIC", help="scaling version of PMFSNet")
     parser.add_argument("--epoch", type=int, default=150, help="training epoch")
-    parser.add_argument("--task", type=str, default="multitask", choices=["segmentation", "classification", "multitask"], help="which task to perform"
-        )
+    parser.add_argument("--task", type=str, default="multitask", choices=["segmentation", "classification", "multitask"], help="which task to perform")
     args = parser.parse_args()
-
-    if args.dataset == "ISIC-2018":
-        params = params_ISIC_2018
-        if args.task == "segmentation":
-            params["segmentation"] = True
-            params["classification"] = False
-        elif args.task == "classification":
-            params["segmentation"] = False
-            params["classification"] = True
-        else: 
-            params["segmentation"] = True
-            params["classification"] = True
     return args
 
 
@@ -152,12 +139,18 @@ def main():
     print("Complete the initialization of model:{}, optimizer:{}, and lr_scheduler:{}".format(params["model_name"], params["optimizer_name"], params["lr_scheduler_name"]))
 
     # detect model tasks
-    params["segmentation"] = hasattr(model, "segmentation_head")
-    params["classification"] = hasattr(model, "classification_head")
-    if args.segmentation is not None:
-        params["segmentation"] = args.segmentation
-    if args.classification is not None:
-        params["classification"] = args.classification
+    # set task mode from CLI
+    if args.task == "segmentation":
+        params["segmentation"] = True
+        params["classification"] = False
+
+    elif args.task == "classification":
+        params["segmentation"] = False
+        params["classification"] = True
+
+    elif args.task == "multitask":
+        params["segmentation"] = True
+        params["classification"] = True
 
     print(f"Segmentation training: {params['segmentation']}, Classification training: {params['classification']}")
 
