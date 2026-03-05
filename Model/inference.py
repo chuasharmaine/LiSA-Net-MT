@@ -239,8 +239,7 @@ def parse_args():
     parser.add_argument("--scaling_version", type=str, default="BASIC", help="scaling version of PMFSNet")
     parser.add_argument("--image_path", type=str, default=None, help="path of single inferred image")
     parser.add_argument("--images_dir", type=str, default=None, help="directory containing images for batch inference")
-    parser.add_argument("--segmentation", action="store_true", help="Force segmentation inference")
-    parser.add_argument("--classification", action="store_true", help="Force classification inference")
+    parser.add_argument("--task", type=str, default="multitask", choices=["segmentation", "classification", "multitask"], help="which task to perform")
     return parser.parse_args()
 
 
@@ -288,16 +287,15 @@ def main():
     print("Complete the initialization of model:{}".format(params["model_name"]))
 
     # Detect model task 
-    if not args.segmentation and not args.classification:
+    if args.task == "segmentation":
+        params["segmentation"] = True
+        params["classification"] = False
+    elif args.task == "classification":
+        params["segmentation"] = False
+        params["classification"] = True
+    elif args.task == "multitask":
         params["segmentation"] = hasattr(model, "segmentation_head")
         params["classification"] = hasattr(model, "classification_head")
-    else:
-        if args.segmentation:
-            params["segmentation"] = True
-            params["classification"] = False
-        elif args.classification:
-            params["segmentation"] = False
-            params["classification"] = True
 
     print(f"Segmentation: {params['segmentation']}, Classification: {params['classification']}")
 
