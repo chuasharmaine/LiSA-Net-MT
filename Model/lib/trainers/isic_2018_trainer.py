@@ -145,14 +145,17 @@ class ISIC2018Trainer:
             total_loss = 0
             seg_out, cls_out = None, None
 
-            # determine model task
-            if self.opt["segmentation"] and self.opt["classification"]:
-                # cls branch uses seg output
-                seg_out, cls_out = output
-            elif self.opt["segmentation"]:
-                seg_out = output
-            elif self.opt["classification"]:
-                cls_out = output
+            # handle dict output from model
+            if isinstance(output, dict):
+                seg_out = output.get("seg")
+                cls_out = output.get("cls")
+            else:
+                if self.opt["segmentation"] and self.opt["classification"]:
+                    seg_out, cls_out = output
+                elif self.opt["segmentation"]:
+                    seg_out = output
+                elif self.opt["classification"]:
+                    cls_out = output
 
             # segmentation loss
             if seg_out is not None:
@@ -236,12 +239,16 @@ class ISIC2018Trainer:
                 seg_out = None
                 cls_out = None
 
-                if self.opt["segmentation"] and self.opt["classification"]:
-                    seg_out, cls_out = output
-                elif self.opt["segmentation"]:
-                    seg_out = output
-                elif self.opt["classification"]:
-                    cls_out = output
+                if isinstance(output, dict):
+                    seg_out = output.get("seg")
+                    cls_out = output.get("cls")
+                else:
+                    if self.opt["segmentation"] and self.opt["classification"]:
+                        seg_out, cls_out = output
+                    elif self.opt["segmentation"]:
+                        seg_out = output
+                    elif self.opt["classification"]:
+                        cls_out = output
 
                 if seg_out is not None:
                     self.calculate_metric_and_update_statistcs(
