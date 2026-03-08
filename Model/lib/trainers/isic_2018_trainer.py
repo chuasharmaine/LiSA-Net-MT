@@ -123,9 +123,23 @@ class ISIC2018Trainer:
 
         self.model.train()
 
-        for batch_idx, (input_tensor, target) in enumerate(self.train_data_loader):
+        for batch_idx, batch in enumerate(self.train_data_loader):
 
-            input_tensor, target = input_tensor.to(self.device), target.to(self.device)
+            if self.opt["segmentation"] and self.opt["classification"]:
+                input_tensor, seg_target, cls_target = batch
+            elif self.opt["segmentation"]:
+                input_tensor, seg_target = batch
+                cls_target = None
+            elif self.opt["classification"]:
+                input_tensor, cls_target = batch
+                seg_target = None
+
+            input_tensor = input_tensor.to(self.device)
+            if seg_target is not None:
+                seg_target = seg_target.to(self.device)
+            if cls_target is not None:
+                cls_target = cls_target.to(self.device)
+
             output = self.model(input_tensor)
 
             total_loss = 0
@@ -141,24 +155,37 @@ class ISIC2018Trainer:
                 cls_out = output
 
             # segmentation loss
-            if self.opt["segmentation"]:
-                seg_loss = self.loss_function(seg_out, target)
+            if seg_out is not None:
+                seg_loss = self.loss_function(seg_out, seg_target)
                 total_loss += seg_loss
 
-            # classification loss 
-            if self.opt["classification"]:
-                cls_target = target.view(target.size(0))
-                cls_loss = self.cls_loss_function(cls_out, cls_target.long())
+            # classification loss
+            if cls_out is not None:
+                cls_target_idx = cls_target.argmax(dim=1)
+                cls_loss = self.cls_loss_function(cls_out, cls_target_idx)
                 total_loss += cls_loss
 
             total_loss.backward()
             self.optimizer.step()
-            self.optimizer.zero_grad() 
+            self.optimizer.zero_grad()
 
             if seg_out is not None:
-                self.calculate_metric_and_update_statistcs(seg_out.cpu().float(), target.cpu().float(), len(target), total_loss.cpu(), mode="train")
+                self.calculate_metric_and_update_statistcs(
+                    seg_out.cpu().float(),
+                    seg_target.cpu().float(),
+                    len(input_tensor),
+                    total_loss.cpu(),
+                    mode="train"
+                )
+
             if cls_out is not None:
-                self.calculate_metric_and_update_statistcs(cls_out.cpu().float(), target.cpu().float(), len(target), total_loss.cpu(), mode="train")
+                self.calculate_metric_and_update_statistcs(
+                    cls_out.cpu().float(),
+                    cls_target.argmax(dim=1).cpu(),
+                    len(input_tensor),
+                    total_loss.cpu(),
+                    mode="train"
+                )
 
             if (batch_idx + 1) % self.terminal_show_freq == 0:
                 train_class_IoU = self.statistics_dict["train"]["total_area_intersect"] / self.statistics_dict["train"]["total_area_union"]
@@ -181,26 +208,56 @@ class ISIC2018Trainer:
                 print(log_step)
                 if not self.opt["optimize_params"]:
                     utils.pre_write_txt(log_step, self.log_txt_path)
-
+                    
     def valid_epoch(self, epoch):
 
         self.model.eval()
 
         with torch.no_grad():
 
-            for batch_idx, (input_tensor, target) in enumerate(self.valid_data_loader):
-                input_tensor, target = input_tensor.to(self.device), target.to(self.device)
-
-                output = self.model(input_tensor)
+            for batch_idx, batch in enumerate(self.valid_data_loader):
 
                 if self.opt["segmentation"] and self.opt["classification"]:
-                    seg_out, _ = output
+                    input_tensor, seg_target, cls_target = batch
+                elif self.opt["segmentation"]:
+                    input_tensor, seg_target = batch
+                    cls_target = None
+                elif self.opt["classification"]:
+                    input_tensor, cls_target = batch
+                    seg_target = None
+
+                input_tensor = input_tensor.to(self.device)
+                if seg_target is not None:
+                    seg_target = seg_target.to(self.device)
+                if cls_target is not None:
+                    cls_target = cls_target.to(self.device)
+
+                output = self.model(input_tensor)
+                seg_out = None
+                cls_out = None
+
+                if self.opt["segmentation"] and self.opt["classification"]:
+                    seg_out, cls_out = output
                 elif self.opt["segmentation"]:
                     seg_out = output
-                else:
-                    seg_out = None
+                elif self.opt["classification"]:
+                    cls_out = output
 
-                self.calculate_metric_and_update_statistcs(seg_out.cpu(), target.cpu(), len(target), mode="valid")
+                if seg_out is not None:
+                    self.calculate_metric_and_update_statistcs(
+                        seg_out.cpu(),
+                        seg_target.cpu(),
+                        len(input_tensor),
+                        mode="valid"
+                    )
+
+                if cls_out is not None:
+                    self.calculate_metric_and_update_statistcs(
+                        cls_out.cpu(),
+                        cls_target.argmax(dim=1).cpu(),
+                        len(input_tensor),
+                        mode="valid"
+                    )
 
             cur_JI = self.statistics_dict["valid"]["JI_sum"] / self.statistics_dict["valid"]["count"]
 

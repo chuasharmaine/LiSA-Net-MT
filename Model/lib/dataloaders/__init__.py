@@ -8,8 +8,8 @@
 """
 from torch.utils.data import DataLoader
 
-from .ToothDataset import ToothDataset
-from .MMOTUDataset import MMOTUDataset
+# from .ToothDataset import ToothDataset
+# from .MMOTUDataset import MMOTUDataset
 from .ISIC2018Dataset import ISIC2018Dataset
 
 

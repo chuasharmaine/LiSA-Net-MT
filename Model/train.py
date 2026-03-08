@@ -130,14 +130,6 @@ def main():
     print(params["device"])
     print("Complete the initialization of configuration")
 
-    # initialize the dataloader
-    train_loader, valid_loader = dataloaders.get_dataloader(params)
-    print("Complete the initialization of dataloader")
-
-    # initialize the model, optimizer, and lr_scheduler
-    model, optimizer, lr_scheduler = models.get_model_optimizer_lr_scheduler(params)
-    print("Complete the initialization of model:{}, optimizer:{}, and lr_scheduler:{}".format(params["model_name"], params["optimizer_name"], params["lr_scheduler_name"]))
-
     # detect model tasks
     # set task mode from CLI
     if args.task == "segmentation":
@@ -156,6 +148,14 @@ def main():
         params["metric_names"] = ["DSC", "IoU", "JI", "ACC", "AUC_ROC", "F1_MACRO"]
 
     print(f"Segmentation training: {params['segmentation']}, Classification training: {params['classification']}")
+
+    # initialize the dataloader
+    train_loader, valid_loader = dataloaders.get_dataloader(params)
+    print("Complete the initialization of dataloader")
+
+    # initialize the model, optimizer, and lr_scheduler
+    model, optimizer, lr_scheduler = models.get_model_optimizer_lr_scheduler(params)
+    print("Complete the initialization of model:{}, optimizer:{}, and lr_scheduler:{}".format(params["model_name"], params["optimizer_name"], params["lr_scheduler_name"]))
 
     # initialize the loss function
     loss_function = losses.get_loss_function(params)

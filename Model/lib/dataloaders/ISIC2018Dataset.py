@@ -97,6 +97,7 @@ class ISIC2018Dataset(Dataset):
             mask_path = self.labels_list[index]
             mask = cv2.imread(mask_path, -1)
             mask[mask == 255] = 1
+            mask = mask.astype(np.uint8)
 
         if self.classification:
             filename = os.path.splitext(os.path.basename(image_path))[0]
