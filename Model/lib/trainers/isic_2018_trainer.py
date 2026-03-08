@@ -141,6 +141,8 @@ class ISIC2018Trainer:
                 cls_target = cls_target.to(self.device)
 
             output = self.model(input_tensor)
+            seg_out = None
+            cls_out = None
             if isinstance(output, dict):
                 seg_out = output.get("seg")
                 cls_out = output.get("cls")
@@ -149,32 +151,28 @@ class ISIC2018Trainer:
                     seg_out, cls_out = output
                 elif self.opt["segmentation"]:
                     seg_out = output
-                    cls_out = None
                 elif self.opt["classification"]:
                     cls_out = output
-                    seg_out = None
 
             # compute loss
-            total_loss = 0
+            total_loss = None
 
-            # segmentation loss
             if seg_out is not None:
                 seg_loss = self.loss_function(seg_out, seg_target)
-                total_loss += seg_loss
+                total_loss = seg_loss if total_loss is None else total_loss + seg_loss
 
-            # classification loss
             if cls_out is not None:
                 cls_target_idx = cls_target.argmax(dim=1)
                 cls_loss = self.cls_loss_function(cls_out, cls_target_idx)
-                total_loss += cls_loss
+                total_loss = cls_loss if total_loss is None else total_loss + cls_loss
 
             # only backward if total_loss is a tensor
-            if isinstance(total_loss, torch.Tensor) and total_loss.requires_grad:
+            if total_loss is not None:
                 self.optimizer.zero_grad()
                 total_loss.backward()
                 self.optimizer.step()
             else:
-                print("WARNING: total_loss is not a tensor with grad!")
+                print("WARNING: no loss computed for this batch!")
 
             # update metrics
             if seg_out is not None:
@@ -182,7 +180,7 @@ class ISIC2018Trainer:
                     seg_out.cpu().float(),
                     seg_target.cpu().float(),
                     len(input_tensor),
-                    total_loss.cpu() if isinstance(total_loss, torch.Tensor) else None,
+                    loss=total_loss.cpu() if total_loss is not None else None,
                     mode="train"
                 )
 
@@ -191,13 +189,13 @@ class ISIC2018Trainer:
                     cls_out.cpu().float(),
                     cls_target.argmax(dim=1).cpu(),
                     len(input_tensor),
-                    total_loss.cpu() if isinstance(total_loss, torch.Tensor) else None,
+                    loss=total_loss.cpu() if total_loss is not None else None,
                     mode="train"
                 )
 
             if (batch_idx + 1) % self.terminal_show_freq == 0:
                 self.log_training_progress(epoch, batch_idx)
-
+                
     def valid_epoch(self, epoch):
 
         self.model.eval()
