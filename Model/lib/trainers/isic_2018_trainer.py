@@ -142,7 +142,7 @@ class ISIC2018Trainer:
 
             output = self.model(input_tensor)
 
-            total_loss = 0
+            total_loss = torch.tensor(0.0, device=self.device)
             seg_out, cls_out = None, None
 
             # handle dict output from model
@@ -236,6 +236,9 @@ class ISIC2018Trainer:
                     cls_target = cls_target.to(self.device)
 
                 output = self.model(input_tensor)
+                print("MODEL OUTPUT:", type(output))
+                if isinstance(output, dict):
+                    print("KEYS:", output.keys())
                 seg_out = None
                 cls_out = None
 
