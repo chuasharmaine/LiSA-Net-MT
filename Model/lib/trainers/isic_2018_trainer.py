@@ -141,11 +141,6 @@ class ISIC2018Trainer:
                 cls_target = cls_target.to(self.device)
 
             output = self.model(input_tensor)
-
-            total_loss = torch.tensor(0.0, device=self.device)
-            seg_out, cls_out = None, None
-
-            # handle dict output from model
             if isinstance(output, dict):
                 seg_out = output.get("seg")
                 cls_out = output.get("cls")
@@ -154,8 +149,13 @@ class ISIC2018Trainer:
                     seg_out, cls_out = output
                 elif self.opt["segmentation"]:
                     seg_out = output
+                    cls_out = None
                 elif self.opt["classification"]:
                     cls_out = output
+                    seg_out = None
+
+            # compute loss
+            total_loss = 0
 
             # segmentation loss
             if seg_out is not None:
@@ -168,16 +168,21 @@ class ISIC2018Trainer:
                 cls_loss = self.cls_loss_function(cls_out, cls_target_idx)
                 total_loss += cls_loss
 
-            total_loss.backward()
-            self.optimizer.step()
-            self.optimizer.zero_grad()
+            # only backward if total_loss is a tensor
+            if isinstance(total_loss, torch.Tensor) and total_loss.requires_grad:
+                self.optimizer.zero_grad()
+                total_loss.backward()
+                self.optimizer.step()
+            else:
+                print("WARNING: total_loss is not a tensor with grad!")
 
+            # update metrics
             if seg_out is not None:
                 self.calculate_metric_and_update_statistcs(
                     seg_out.cpu().float(),
                     seg_target.cpu().float(),
                     len(input_tensor),
-                    total_loss.cpu(),
+                    total_loss.cpu() if isinstance(total_loss, torch.Tensor) else None,
                     mode="train"
                 )
 
@@ -186,32 +191,13 @@ class ISIC2018Trainer:
                     cls_out.cpu().float(),
                     cls_target.argmax(dim=1).cpu(),
                     len(input_tensor),
-                    total_loss.cpu(),
+                    total_loss.cpu() if isinstance(total_loss, torch.Tensor) else None,
                     mode="train"
                 )
 
             if (batch_idx + 1) % self.terminal_show_freq == 0:
-                train_class_IoU = self.statistics_dict["train"]["total_area_intersect"] / self.statistics_dict["train"]["total_area_union"]
-                train_mean_IoU = np.mean(train_class_IoU)
-                train_ACC_seg = self.statistics_dict["train"]["ACC_seg_sum"] / self.statistics_dict["train"]["count"] if self.opt["segmentation"] else 0
-                train_ACC_cls = self.statistics_dict["train"]["ACC_cls_sum"] / self.statistics_dict["train"]["count"] if self.opt["classification"] else 0
+                self.log_training_progress(epoch, batch_idx)
 
-                log_step = "[{}]  epoch:[{:05d}/{:05d}]  step:[{:04d}/{:04d}]  lr:{:.6f}  loss:{:.6f}  dsc:{:.6f}  IoU:{:.6f}  ACC_seg:{:.6f}  ACC_cls:{:.6f}  JI:{:.6f}".format(
-                    datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    epoch, self.end_epoch - 1,
-                    batch_idx + 1, len(self.train_data_loader),
-                    self.optimizer.param_groups[0]['lr'],
-                    self.statistics_dict["train"]["loss"] / self.statistics_dict["train"]["count"],
-                    self.statistics_dict["train"]["DSC_sum"] / self.statistics_dict["train"]["count"] if self.opt["segmentation"] else 0,
-                    train_mean_IoU if self.opt["segmentation"] else 0,
-                    train_ACC_seg,
-                    train_ACC_cls,
-                    self.statistics_dict["train"]["JI_sum"] / self.statistics_dict["train"]["count"] if self.opt["segmentation"] else 0
-                )
-                print(log_step)
-                if not self.opt["optimize_params"]:
-                    utils.pre_write_txt(log_step, self.log_txt_path)
-                    
     def valid_epoch(self, epoch):
 
         self.model.eval()
