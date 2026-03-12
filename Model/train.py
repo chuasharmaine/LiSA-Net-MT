@@ -109,10 +109,6 @@ def main():
 
     params = params_ISIC_2018
 
-    params["cuda"] = False
-    params["num_workers"] = 0
-    params["optimize_params"] = False
-
     # update the dictionary of hyperparameters used for training
     params["dataset_name"] = args.dataset
     params["dataset_path"] = os.path.join(r"./datasets", ("NC-release-data-checked" if args.dataset == "3D-CBCT-Tooth" else args.dataset))

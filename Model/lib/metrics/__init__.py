@@ -53,10 +53,10 @@ def get_metric(opt):
         seg_classes = opt.get("seg_classes", 1)
         cls_classes = opt.get("cls_classes", 1)
         for metric_name in opt["metric_names"]:
-            if metric_name in ["DSC", "IoU", "JI"]:
+            if metric_name in ["ACC_SEG", "DSC", "IoU", "JI"]:
                 # segmentation metrics
                 num_classes = seg_classes
-            elif metric_name in ["ACC", "AUC_ROC", "F1_MACRO"]:
+            elif metric_name in ["ACC_CLS", "AUC_ROC", "F1_MACRO"]:
                 # classification metrics
                 num_classes = cls_classes
             else:
@@ -71,12 +71,11 @@ def get_metric(opt):
             elif metric_name == "JI":
                 metrics[metric_name] = ISIC2018.JI(num_classes=num_classes, sigmoid_normalization=opt["sigmoid_normalization"])
 
-            elif metric_name == "ACC":
-                # segmentation or classification ACC
-                if opt.get("segmentation", True):
-                    metrics[metric_name] = ISIC2018.ACCSEG(nnum_classes=num_classes, sigmoid_normalization=opt["sigmoid_normalization"])
-                elif opt.get("classification", False):
-                    metrics[metric_name] = ISIC2018.ACCCLS()
+            elif metric_name == "ACC_SEG":
+                metrics[metric_name] = ISIC2018.ACCSEG(num_classes=num_classes, sigmoid_normalization=opt["sigmoid_normalization"])
+            
+            elif metric_name == "ACC_CLS":
+                metrics[metric_name] = ISIC2018.ACCCLS(num_classes=num_classes, sigmoid_normalization=opt["sigmoid_normalization"])
             
             elif metric_name == "AUC_ROC":
                 metrics[metric_name] = ISIC2018.AUC_ROC(num_classes=num_classes, sigmoid_normalization=opt["sigmoid_normalization"])

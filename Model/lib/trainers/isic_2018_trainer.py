@@ -40,10 +40,10 @@ class ISIC2018Trainer:
         if self.opt["classification"]:
             self.cls_loss_function = nn.CrossEntropyLoss()
 
-        if self.opt["segmentation"] and "ACC" in self.opt["metric_names"]:
-            self.metric["ACC_SEG"] = ACCSEG(num_classes=self.opt["classes"], sigmoid_normalization=self.opt["sigmoid_normalization"])
-        if self.opt["classification"] and "ACC" in self.opt["metric_names"]:
-            self.metric["ACC_CLS"] = ACCCLS()
+        if self.opt["segmentation"] and "ACC_SEG" in self.opt["metric_names"]:
+            self.metric["ACC_SEG"] = ACCSEG(num_classes=self.opt["seg_classes"], sigmoid_normalization=self.opt["sigmoid_normalization"])
+        if self.opt["classification"] and "ACC_CLS" in self.opt["metric_names"]:
+            self.metric["ACC_CLS"] = ACCCLS(num_classes=self.opt["cls_classes"], sigmoid_normalization=self.opt["sigmoid_normalization"])
 
         if not self.opt["optimize_params"]:
             if self.opt["resume"] is None:
@@ -76,14 +76,15 @@ class ISIC2018Trainer:
 
             self.valid_epoch(epoch)
 
+            valid_count = self.statistics_dict["valid"]["count"]
             train_class_IoU = self.statistics_dict["train"]["total_area_intersect"] / self.statistics_dict["train"]["total_area_union"]
             train_class_IoU = np.nan_to_num(train_class_IoU)
             valid_class_IoU = self.statistics_dict["valid"]["total_area_intersect"] / self.statistics_dict["valid"]["total_area_union"]
             valid_class_IoU = np.nan_to_num(valid_class_IoU)
-            valid_dsc = self.statistics_dict["valid"]["DSC_sum"] / self.statistics_dict["valid"]["count"]
-            valid_JI = self.statistics_dict["valid"]["JI_sum"] / self.statistics_dict["valid"]["count"]
-            valid_ACC_seg = self.statistics_dict["valid"]["ACC_seg_sum"] / self.statistics_dict["valid"]["count"] if self.opt["segmentation"] else 0
-            valid_ACC_cls = self.statistics_dict["valid"]["ACC_cls_sum"] / self.statistics_dict["valid"]["count"] if self.opt["classification"] else 0
+            valid_dsc = self.statistics_dict["valid"]["DSC_sum"] / valid_count if valid_count > 0 else 0.0
+            valid_JI = self.statistics_dict["valid"]["JI_sum"] / valid_count if valid_count > 0 else 0.0
+            valid_ACC_seg = self.statistics_dict["valid"]["ACC_seg_sum"] / valid_count if valid_count > 0 and self.opt["segmentation"] else 0
+            valid_ACC_cls = self.statistics_dict["valid"]["ACC_cls_sum"] / valid_count if valid_count > 0 and self.opt["classification"] else 0
 
             train_mean_IoU = np.mean(train_class_IoU)
             valid_mean_IoU = np.mean(valid_class_IoU)
@@ -93,11 +94,21 @@ class ISIC2018Trainer:
             else:
                 self.lr_scheduler.step()
 
-            train_ACC_seg = self.statistics_dict["train"]["ACC_seg_sum"] / self.statistics_dict["train"]["count"] if self.opt["segmentation"] else 0
-            train_ACC_cls = self.statistics_dict["train"]["ACC_cls_sum"] / self.statistics_dict["train"]["count"] if self.opt["classification"] else 0
+            if self.opt["segmentation"]:
+                valid_count = self.statistics_dict["valid"]["count"]
+                train_ACC_seg = self.statistics_dict["train"]["ACC_seg_sum"] / valid_count if valid_count > 0 else 0
+                valid_ACC_seg = self.statistics_dict["valid"]["ACC_seg_sum"] / valid_count if valid_count > 0 else 0
+            else:
+                train_ACC_seg = 0
+                valid_ACC_seg = 0
 
-            valid_ACC_seg = self.statistics_dict["valid"]["ACC_seg_sum"] / self.statistics_dict["valid"]["count"] if self.opt["segmentation"] else 0
-            valid_ACC_cls = self.statistics_dict["valid"]["ACC_cls_sum"] / self.statistics_dict["valid"]["count"] if self.opt["classification"] else 0
+            if self.opt["classification"]:
+                valid_count = self.statistics_dict["valid"]["count"]
+                train_ACC_cls = self.statistics_dict["train"]["ACC_cls_sum"] / valid_count if valid_count > 0 else 0
+                valid_ACC_cls = self.statistics_dict["valid"]["ACC_cls_sum"] / valid_count if valid_count > 0 else 0
+            else:
+                train_ACC_cls = 0
+                valid_ACC_cls = 0
 
             log_str = "[{}]  epoch:[{:05d}/{:05d}]  lr:{:.6f}  train_loss:{:.6f}  train_DSC:{:.6f}  train_IoU:{:.6f}  train_ACC_seg:{:.6f}  train_ACC_cls:{:.6f}  train_JI:{:.6f}  valid_DSC:{:.6f}  valid_IoU:{:.6f}  valid_ACC_seg:{:.6f}  valid_ACC_cls:{:.6f}  valid_JI:{:.6f}  best_JI:{:.6f}".format(
                 datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -169,7 +180,7 @@ class ISIC2018Trainer:
                 seg_loss = self.loss_function(seg_out, seg_target)
                 total_loss = seg_loss if total_loss is None else total_loss + seg_loss
 
-            if cls_out is not None and cls_out.numel() > 0:
+            if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
                 cls_target_idx = cls_target.argmax(dim=1)
                 cls_loss = self.cls_loss_function(cls_out, cls_target_idx)
                 total_loss = cls_loss if total_loss is None else total_loss + cls_loss
@@ -192,7 +203,7 @@ class ISIC2018Trainer:
                     mode="train"
                 )
 
-            if cls_out is not None and cls_out.numel() > 0:
+            if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
                 self.calculate_metric_and_update_statistcs(
                     cls_out.cpu().float(),
                     cls_target.argmax(dim=1).cpu(),
@@ -249,7 +260,7 @@ class ISIC2018Trainer:
                         mode="valid"
                     )
 
-                if cls_out is not None and cls_out.numel() > 0:
+                if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
                     self.calculate_metric_and_update_statistcs(
                         cls_out.cpu(),
                         cls_target.argmax(dim=1).cpu(),
@@ -257,7 +268,8 @@ class ISIC2018Trainer:
                         mode="valid"
                     )
 
-            cur_JI = self.statistics_dict["valid"]["JI_sum"] / self.statistics_dict["valid"]["count"]
+            valid_count = self.statistics_dict["valid"]["count"]
+            cur_JI = self.statistics_dict["valid"]["JI_sum"] / valid_count if valid_count > 0 else 0.0
 
             if (not self.opt["optimize_params"]) and (epoch + 1) % self.save_epoch_freq == 0:
                 self.save(epoch, cur_JI, self.best_metric, type="normal")
