@@ -95,16 +95,18 @@ class ISIC2018Trainer:
                 self.lr_scheduler.step()
 
             if self.opt["segmentation"]:
+                train_count = self.statistics_dict["train"]["count"]
                 valid_count = self.statistics_dict["valid"]["count"]
-                train_ACC_seg = self.statistics_dict["train"]["ACC_seg_sum"] / valid_count if valid_count > 0 else 0
+                train_ACC_seg = self.statistics_dict["train"]["ACC_seg_sum"] / train_count if train_count > 0 else 0
                 valid_ACC_seg = self.statistics_dict["valid"]["ACC_seg_sum"] / valid_count if valid_count > 0 else 0
             else:
                 train_ACC_seg = 0
                 valid_ACC_seg = 0
 
             if self.opt["classification"]:
+                train_count = self.statistics_dict["train"]["count"]
                 valid_count = self.statistics_dict["valid"]["count"]
-                train_ACC_cls = self.statistics_dict["train"]["ACC_cls_sum"] / valid_count if valid_count > 0 else 0
+                train_ACC_cls = self.statistics_dict["train"]["ACC_cls_sum"] / train_count if train_count > 0 else 0
                 valid_ACC_cls = self.statistics_dict["valid"]["ACC_cls_sum"] / valid_count if valid_count > 0 else 0
             else:
                 train_ACC_cls = 0
