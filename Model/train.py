@@ -135,17 +135,17 @@ def main():
     if args.task == "segmentation":
         params["segmentation"] = True
         params["classification"] = False
-        params["metric_names"] = ["DSC", "IoU", "JI"]
+        params["metric_names"] = ["ACC_SEG", "DSC", "IoU", "JI"]
 
     elif args.task == "classification":
         params["segmentation"] = False
         params["classification"] = True
-        params["metric_names"] = ["ACC", "AUC_ROC", "F1_MACRO"]
+        params["metric_names"] = ["ACC_CLS", "AUC_ROC", "F1_MACRO"]
 
     elif args.task == "multitask":
         params["segmentation"] = True
         params["classification"] = True
-        params["metric_names"] = ["DSC", "IoU", "JI", "ACC", "AUC_ROC", "F1_MACRO"]
+        params["metric_names"] = ["ACC_SEG", "DSC", "IoU", "JI", "ACC_CLS", "AUC_ROC", "F1_MACRO"]
 
     print(f"Segmentation training: {params['segmentation']}, Classification training: {params['classification']}")
 
