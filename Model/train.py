@@ -32,12 +32,15 @@ params_ISIC_2018 = {
     # —————————————————————————————————————————————    Data Loading     ——————————————————————————————————————————————————————
     "dataset_name": "ISIC-2018",
     "dataset_path": r"./datasets/ISIC-2018",
+    # "batch_size": 2,
+    # "num_workers": 0,
     "batch_size": 32,
     "num_workers": 2,
     # —————————————————————————————————————————————    Model     ——————————————————————————————————————————————————————
     "model_name": "PMFSNet",
     "in_channels": 3,
-    "classes": 7,
+    "seg_classes": 2,
+    "cls_classes": 7,
     "segmentation": True, 
     "classification": True, 
     "index_to_class_dict":
@@ -79,6 +82,7 @@ params_ISIC_2018 = {
     "optimize_params": False,
     "run_dir": r"./runs",
     "start_epoch": 0,
+    # "end_epoch": 1,
     "end_epoch": 150,
     "best_metric": 0,
     "terminal_show_freq": 20,
@@ -104,6 +108,10 @@ def main():
     args = parse_args()
 
     params = params_ISIC_2018
+
+    params["cuda"] = False
+    params["num_workers"] = 0
+    params["optimize_params"] = False
 
     # update the dictionary of hyperparameters used for training
     params["dataset_name"] = args.dataset
