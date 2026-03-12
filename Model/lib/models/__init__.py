@@ -143,7 +143,7 @@ def get_model_optimizer_lr_scheduler(opt):
             model = LiSANet(in_channels=opt["in_channels"], out_channels=opt["classes"], dim=opt["dimension"], scaling_version=opt["scaling_version"])
 
         elif opt["model_name"] == "LiSANetMT":
-            model = LiSANetMT(in_channels=opt["in_channels"], seg_out_channels=opt["classes"], cls_out_channels=opt["classes"], dim=opt["dimension"], scaling_version=opt["scaling_version"], segmentation=True, classification=True)
+            model = LiSANetMT(in_channels=opt["in_channels"], seg_out_channels=opt["seg_classes"], cls_out_channels=opt["cls_classes"], dim=opt["dimension"], scaling_version=opt["scaling_version"], segmentation=True, classification=True)
 
         else:
             raise RuntimeError(f"No {opt['model_name']} model available on {opt['dataset_name']} dataset")
@@ -185,19 +185,22 @@ def get_model_optimizer_lr_scheduler(opt):
 
     elif opt["dataset_name"] == "ISIC-2018":
         if opt["model_name"] == "PMFSNet":
-            model = PMFSNet(in_channels=opt["in_channels"], out_channels=opt["classes"], dim=opt["dimension"], scaling_version=opt["scaling_version"])
+            model = PMFSNet(in_channels=opt["in_channels"], out_channels=opt["seg_classes"], dim=opt["dimension"], scaling_version=opt["scaling_version"])
 
         elif opt["model_name"] == "LiSANet":
-            model = LiSANet(in_channels=opt["in_channels"], out_channels=opt["classes"], dim=opt["dimension"], scaling_version=opt["scaling_version"])
+            model = LiSANet(in_channels=opt["in_channels"], out_channels=opt["seg_classes"], dim=opt["dimension"], scaling_version=opt["scaling_version"])
 
         elif opt["model_name"] == "LiSANetMT":
-            model = LiSANetMT(in_channels=opt["in_channels"], seg_out_channels=opt["classes"], cls_out_channels=opt["classes"], dim=opt["dimension"], scaling_version=opt["scaling_version"], segmentation=True, classification=True)
-
-        elif opt["model_name"] == "MobileNetV2":
-            model = MobileNetV2(in_channels=opt["in_channels"], out_channels=opt["classes"], input_size=opt["resize_shape"][0], width_mult=1.)
+            model = LiSANetMT(in_channels=opt["in_channels"], seg_out_channels=opt["seg_classes"], cls_out_channels=opt["cls_classes"] if opt["cls_classes"] is not None else 0, dim=opt["dimension"], scaling_version=opt["scaling_version"], segmentation=True, classification=True)
 
         elif opt["model_name"] == "UNet":
-            model = UNet(n_channels=opt["in_channels"], n_classes=opt["classes"])
+            model = UNet(n_channels=opt["in_channels"], n_classes=opt["seg_classes"])
+
+        elif opt["model_name"] == "EGEUNet":
+            model = EGEUNet(input_channels=opt["in_channels"], num_classes=opt["seg_classes"])
+            
+        elif opt["model_name"] == "MobileNetV2":
+            model = MobileNetV2(in_channels=opt["in_channels"], out_channels=opt["classes"], input_size=opt["resize_shape"][0], width_mult=1.)
 
         elif opt["model_name"] == "MsRED":
             model = Ms_red_v2(classes=opt["classes"], channels=opt["in_channels"], out_size=opt["resize_shape"])
@@ -219,9 +222,6 @@ def get_model_optimizer_lr_scheduler(opt):
 
         elif opt["model_name"] == "AttU_Net":
             model = AttU_Net(img_ch=opt["in_channels"], output_ch=opt["classes"])
-
-        elif opt["model_name"] == "EGEUNet":
-            model = EGEUNet(input_channels=opt["in_channels"], num_classes=opt["classes"])
 
         else:
             raise RuntimeError(f"No {opt['model_name']} model available on {opt['dataset_name']} dataset")
@@ -375,13 +375,13 @@ def get_model(opt):
             )
 
         elif opt["model_name"] == "PMFSNet":
-            model = PMFSNet(in_channels=opt["in_channels"], out_channels=opt["classes"], dim=opt["dimension"], scaling_version=opt["scaling_version"])
+            model = PMFSNet(in_channels=opt["in_channels"], out_channels=opt["seg_classes"], dim=opt["dimension"], scaling_version=opt["scaling_version"])
 
         elif opt["model_name"] == "LiSANet":
-            model = LiSANet(in_channels=opt["in_channels"], out_channels=opt["classes"], dim=opt["dimension"], scaling_version=opt["scaling_version"])
+            model = LiSANet(in_channels=opt["in_channels"], out_channels=opt["seg_classes"], dim=opt["dimension"], scaling_version=opt["scaling_version"])
 
         elif opt["model_name"] == "LiSANetMT":
-            model = LiSANetMT(in_channels=opt["in_channels"], seg_out_channels=opt["classes"], cls_out_channels=opt["classes"], dim=opt["dimension"], scaling_version=opt["scaling_version"], segmentation=True, classification=True)
+            model = LiSANetMT(in_channels=opt["in_channels"], seg_out_channels=opt["seg_classes"], cls_out_channels=opt["cls_classes"] if opt["cls_classes"] is not None else 0, dim=opt["dimension"], scaling_version=opt["scaling_version"], segmentation=True, classification=True)
 
         else:
             raise RuntimeError(f"No {opt['model_name']} model available on {opt['dataset_name']} dataset")
@@ -423,19 +423,22 @@ def get_model(opt):
 
     elif opt["dataset_name"] == "ISIC-2018":
         if opt["model_name"] == "PMFSNet":
-            model = PMFSNet(in_channels=opt["in_channels"], out_channels=opt["classes"], dim=opt["dimension"], scaling_version=opt["scaling_version"])
+            model = PMFSNet(in_channels=opt["in_channels"], out_channels=opt["seg_classes"], dim=opt["dimension"], scaling_version=opt["scaling_version"])
 
         elif opt["model_name"] == "LiSANet":
-            model = LiSANet(in_channels=opt["in_channels"], out_channels=opt["classes"], dim=opt["dimension"], scaling_version=opt["scaling_version"])
+            model = LiSANet(in_channels=opt["in_channels"], out_channels=opt["seg_classes"], dim=opt["dimension"], scaling_version=opt["scaling_version"])
 
         elif opt["model_name"] == "LiSANetMT":
-            model = LiSANetMT(in_channels=opt["in_channels"], seg_out_channels=opt["classes"], cls_out_channels=opt["classes"], dim=opt["dimension"], scaling_version=opt["scaling_version"], segmentation=True, classification=True)
+            model = LiSANetMT(in_channels=opt["in_channels"], seg_out_channels=opt["seg_classes"], cls_out_channels=opt["cls_classes"], dim=opt["dimension"], scaling_version=opt["scaling_version"], segmentation=True, classification=True)
+
+        elif opt["model_name"] == "UNet":
+            model = UNet(n_channels=opt["in_channels"], n_classes=opt["seg_classes"])
+
+        elif opt["model_name"] == "EGEUNet":
+            model = EGEUNet(input_channels=opt["in_channels"], num_classes=opt["seg_classes"])
 
         elif opt["model_name"] == "MobileNetV2":
             model = MobileNetV2(in_channels=opt["in_channels"], out_channels=opt["classes"], input_size=opt["resize_shape"][0], width_mult=1.)
-
-        elif opt["model_name"] == "UNet":
-            model = UNet(n_channels=opt["in_channels"], n_classes=opt["classes"])
 
         elif opt["model_name"] == "MsRED":
             model = Ms_red_v2(classes=opt["classes"], channels=opt["in_channels"], out_size=opt["resize_shape"])
@@ -457,9 +460,6 @@ def get_model(opt):
 
         elif opt["model_name"] == "AttU_Net":
             model = AttU_Net(img_ch=opt["in_channels"], output_ch=opt["classes"])
-
-        elif opt["model_name"] == "EGEUNet":
-            model = EGEUNet(input_channels=opt["in_channels"], num_classes=opt["classes"])
 
         else:
             raise RuntimeError(f"No {opt['model_name']} model available on {opt['dataset_name']} dataset")
