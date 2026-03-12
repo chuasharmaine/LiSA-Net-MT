@@ -29,6 +29,13 @@ class ISIC2018Trainer:
         self.loss_function = loss_function
         self.metric = metric
         self.device = opt["device"]
+        self.seg_classes = opt.get("seg_classes")
+        if self.seg_classes is None:
+            self.seg_classes = 1
+
+        self.cls_classes = opt.get("cls_classes")
+        if self.cls_classes is None:
+            self.cls_classes = 1
 
         if self.opt["classification"]:
             self.cls_loss_function = nn.CrossEntropyLoss()
@@ -144,8 +151,8 @@ class ISIC2018Trainer:
             seg_out = None
             cls_out = None
             if isinstance(output, dict):
-                seg_out = output.get("seg")
-                cls_out = output.get("cls")
+                seg_out = output.get("segmentation")
+                cls_out = output.get("classification")
             else:
                 if self.opt["segmentation"] and self.opt["classification"]:
                     seg_out, cls_out = output
@@ -158,10 +165,11 @@ class ISIC2018Trainer:
             total_loss = None
 
             if seg_out is not None:
+                seg_target = seg_target.long()
                 seg_loss = self.loss_function(seg_out, seg_target)
                 total_loss = seg_loss if total_loss is None else total_loss + seg_loss
 
-            if cls_out is not None:
+            if cls_out is not None and cls_out.numel() > 0:
                 cls_target_idx = cls_target.argmax(dim=1)
                 cls_loss = self.cls_loss_function(cls_out, cls_target_idx)
                 total_loss = cls_loss if total_loss is None else total_loss + cls_loss
@@ -184,7 +192,7 @@ class ISIC2018Trainer:
                     mode="train"
                 )
 
-            if cls_out is not None:
+            if cls_out is not None and cls_out.numel() > 0:
                 self.calculate_metric_and_update_statistcs(
                     cls_out.cpu().float(),
                     cls_target.argmax(dim=1).cpu(),
@@ -220,22 +228,18 @@ class ISIC2018Trainer:
                     cls_target = cls_target.to(self.device)
 
                 output = self.model(input_tensor)
-                print("MODEL OUTPUT:", type(output))
-                if isinstance(output, dict):
-                    print("KEYS:", output.keys())
-                seg_out = None
-                cls_out = None
 
                 if isinstance(output, dict):
-                    seg_out = output.get("seg")
-                    cls_out = output.get("cls")
+                    seg_out = output.get("segmentation")
+                    cls_out = output.get("classification")
+                elif isinstance(output, tuple):
+                    if self.opt["segmentation"]:
+                        seg_out = output[0] if len(output) > 0 else None
+                    if self.opt["classification"]:
+                        cls_out = output[1] if len(output) > 1 else None
                 else:
-                    if self.opt["segmentation"] and self.opt["classification"]:
-                        seg_out, cls_out = output
-                    elif self.opt["segmentation"]:
+                    if self.opt["segmentation"]:
                         seg_out = output
-                    elif self.opt["classification"]:
-                        cls_out = output
 
                 if seg_out is not None:
                     self.calculate_metric_and_update_statistcs(
@@ -245,7 +249,7 @@ class ISIC2018Trainer:
                         mode="valid"
                     )
 
-                if cls_out is not None:
+                if cls_out is not None and cls_out.numel() > 0:
                     self.calculate_metric_and_update_statistcs(
                         cls_out.cpu(),
                         cls_target.argmax(dim=1).cpu(),
@@ -265,13 +269,18 @@ class ISIC2018Trainer:
                     self.save(epoch, cur_JI, self.best_metric, type="best")
 
     def calculate_metric_and_update_statistcs(self, output, target, cur_batch_size, loss=None, mode="train"):
-        mask = torch.zeros(self.opt["classes"])
+        # check which task
+        if output.ndim == 4:
+            mask = torch.zeros(self.seg_classes)
+        else:
+            mask = torch.zeros(self.cls_classes)
         unique_index = torch.unique(target).int()
         for index in unique_index:
-            mask[index] = 1
+            if index < len(mask):
+                mask[index] = 1
         self.statistics_dict[mode]["count"] += cur_batch_size
         for i, class_name in self.opt["index_to_class_dict"].items():
-            if mask[i] == 1:
+            if i < len(mask) and mask[i] == 1:
                 self.statistics_dict[mode]["class_count"][class_name] += cur_batch_size
         if mode == "train":
             self.statistics_dict[mode]["loss"] += loss.item() * cur_batch_size
@@ -292,7 +301,9 @@ class ISIC2018Trainer:
                 self.statistics_dict[mode]["DSC_sum"] += batch_mean_DSC * cur_batch_size
             else:
                 per_class_metric = metric_func(output, target)
-                per_class_metric = per_class_metric * mask
+                mask = mask.to(per_class_metric.device)
+                mask = mask[:len(per_class_metric)]
+                per_class_metric = per_class_metric[:len(mask)] * mask
                 self.statistics_dict[mode][metric_name]["avg"] += (torch.sum(per_class_metric) / torch.sum(mask)).item() * cur_batch_size
                 for j, class_name in self.opt["index_to_class_dict"].items():
                     self.statistics_dict[mode][metric_name][class_name] += per_class_metric[j].item() * cur_batch_size
@@ -308,10 +319,10 @@ class ISIC2018Trainer:
                 for metric_name in self.opt["metric_names"]
             }
         }
-        statistics_dict["train"]["total_area_intersect"] = np.zeros((self.opt["classes"],))
-        statistics_dict["train"]["total_area_union"] = np.zeros((self.opt["classes"],))
-        statistics_dict["valid"]["total_area_intersect"] = np.zeros((self.opt["classes"],))
-        statistics_dict["valid"]["total_area_union"] = np.zeros((self.opt["classes"],))
+        statistics_dict["train"]["total_area_intersect"] = np.zeros((self.seg_classes,))
+        statistics_dict["train"]["total_area_union"] = np.zeros((self.seg_classes,))
+        statistics_dict["valid"]["total_area_intersect"] = np.zeros((self.seg_classes,))
+        statistics_dict["valid"]["total_area_union"] = np.zeros((self.seg_classes,))
         statistics_dict["train"]["JI_sum"] = 0.0
         statistics_dict["valid"]["JI_sum"] = 0.0
         statistics_dict["train"]["ACC_seg_sum"] = 0.0
@@ -334,8 +345,8 @@ class ISIC2018Trainer:
     def reset_statistics_dict(self):
         for phase in ["train", "valid"]:
             self.statistics_dict[phase]["count"] = 0
-            self.statistics_dict[phase]["total_area_intersect"] = np.zeros((self.opt["classes"],))
-            self.statistics_dict[phase]["total_area_union"] = np.zeros((self.opt["classes"],))
+            self.statistics_dict[phase]["total_area_intersect"] = np.zeros((self.seg_classes,))
+            self.statistics_dict[phase]["total_area_union"] = np.zeros((self.seg_classes,))
             self.statistics_dict[phase]["JI_sum"] = 0.0
             self.statistics_dict[phase]["ACC_seg_sum"] = 0.0
             self.statistics_dict[phase]["ACC_cls_sum"] = 0.0
@@ -404,3 +415,37 @@ class ISIC2018Trainer:
                 print("{:.2f}% of model parameters successfully loaded with training weights".format(100 * load_count / len(model_state_dict)))
                 if not self.opt["optimize_params"]:
                     utils.pre_write_txt("{:.2f}% of model parameters successfully loaded with training weights".format(100 * load_count / len(model_state_dict)), self.log_txt_path)
+
+    def log_training_progress(self, epoch, batch_idx):
+        """
+        Logs the training progress for the current batch.
+        """
+        # compute mean IoU for segmentation 
+        train_class_IoU = self.statistics_dict["train"]["total_area_intersect"] / self.statistics_dict["train"]["total_area_union"]
+        train_class_IoU = np.nan_to_num(train_class_IoU)
+        train_mean_IoU = np.mean(train_class_IoU) if self.opt["segmentation"] else 0
+
+        # compute ACC for each task 
+        train_ACC_seg = self.statistics_dict["train"]["ACC_seg_sum"] / self.statistics_dict["train"]["count"] if self.opt["segmentation"] else 0
+        train_ACC_cls = self.statistics_dict["train"]["ACC_cls_sum"] / self.statistics_dict["train"]["count"] if self.opt["classification"] else 0
+
+        # DSC and JI
+        train_DSC = self.statistics_dict["train"]["DSC_sum"] / self.statistics_dict["train"]["count"] if self.opt["segmentation"] else 0
+        train_JI = self.statistics_dict["train"]["JI_sum"] / self.statistics_dict["train"]["count"] if self.opt["segmentation"] else 0
+
+        log_str = "[{}]  epoch:[{:05d}/{:05d}]  step:[{:04d}/{:04d}]  lr:{:.6f}  loss:{:.6f}  DSC:{:.6f}  IoU:{:.6f}  ACC_seg:{:.6f}  ACC_cls:{:.6f}  JI:{:.6f}".format(
+            datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            epoch, self.end_epoch - 1,
+            batch_idx + 1, len(self.train_data_loader),
+            self.optimizer.param_groups[0]['lr'],
+            self.statistics_dict["train"]["loss"] / self.statistics_dict["train"]["count"],
+            train_DSC,
+            train_mean_IoU,
+            train_ACC_seg,
+            train_ACC_cls,
+            train_JI
+        )
+        print(log_str)
+
+        if not self.opt["optimize_params"]:
+            utils.pre_write_txt(log_str, self.log_txt_path)

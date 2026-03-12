@@ -88,7 +88,13 @@ class LiSANetMT(nn.Module):
         )
 
         if self.classification:
-            self.classifier_fc = nn.Linear(downsample_channels[-1], cls_out_channels)
+            cls_in_channels = downsample_channels[-1]
+            if self.segmentation and seg_out_channels is not None:
+                cls_in_channels += seg_out_channels
+
+            self.classifier_fc = nn.Linear(cls_in_channels, cls_out_channels)
+        else:
+            self.classifier_fc = None
 
         if scaling_version == "BASIC":
             self.up2 = torch.nn.Upsample(scale_factor=2, mode=upsample_mode)
@@ -125,16 +131,20 @@ class LiSANetMT(nn.Module):
             self.upsample_1 = torch.nn.Upsample(scale_factor=2, mode=upsample_mode)
             self.upsample_2 = torch.nn.Upsample(scale_factor=4, mode=upsample_mode)
 
-        self.out_conv = ConvBlock(
-            in_channel=(downsample_channels[0] if scaling_version == "BASIC" else sum(skip_channels)),
-            out_channel=seg_out_channels,
-            kernel_size=3,
-            stride=1,
-            batch_norm=True,
-            preactivation=True,
-            dim=dim
-        )
-        self.upsample_out = torch.nn.Upsample(scale_factor=2, mode=upsample_mode)
+        if self.segmentation and seg_out_channels is not None:
+            self.out_conv = ConvBlock(
+                in_channel=(downsample_channels[0] if scaling_version == "BASIC" else sum(skip_channels)),
+                out_channel=seg_out_channels,
+                kernel_size=3,
+                stride=1,
+                batch_norm=True,
+                preactivation=True,
+                dim=dim
+            )
+            self.upsample_out = torch.nn.Upsample(scale_factor=2, mode=upsample_mode)
+        else:
+            self.out_conv = None
+            self.upsample_out = None
 
     def forward(self, x):
         outputs = {}
@@ -155,10 +165,11 @@ class LiSANetMT(nn.Module):
                 d1 = torch.cat((x1_skip, d1), dim=1)
                 d1 = self.up_conv1(d1)
 
-                seg_out = self.out_conv(d1)
-                seg_out = self.upsample_out(seg_out)
+                if self.segmentation and self.out_conv is not None:
+                    seg_out = self.out_conv(d1)
+                    seg_out = self.upsample_out(seg_out)
 
-                outputs["segmentation"] = seg_out
+                    outputs["segmentation"] = seg_out
 
         else:
             x1, x1_skip = self.down_convs[0](x)
@@ -177,10 +188,22 @@ class LiSANetMT(nn.Module):
 
                 outputs["segmentation"] = seg_out
 
-        if self.classification:
-            cls_features = self.classifier_pool(features) 
+        if self.classification and self.classifier_fc is not None:
+            cls_features = features
+
+            if self.segmentation and "seg_out" in locals():
+                # Resize segmentation output to match feature map
+                seg_resized = nn.functional.interpolate(
+                    seg_out, 
+                    size=features.shape[2:], 
+                    mode='trilinear' if self.dim=='3d' else 'bilinear',
+                    align_corners=False
+                )
+                cls_features = torch.cat([features, seg_resized], dim=1)
+
+            cls_features = self.classifier_pool(cls_features)
             cls_features = torch.flatten(cls_features, 1)
-            cls_out = self.classifier_fc(cls_features) 
+            cls_out = self.classifier_fc(cls_features)
             outputs["classification"] = cls_out
 
         if len(outputs) == 1:
