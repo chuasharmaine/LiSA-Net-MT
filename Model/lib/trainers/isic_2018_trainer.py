@@ -35,12 +35,13 @@ class ISIC2018Trainer:
 
         self.cls_classes = opt.get("cls_classes")
         if self.cls_classes is None:
-            self.cls_classes = 1
+            self.cls_classes = 2  # Changed from 1 to 2
 
         # Segmentation metrics
         if self.opt["segmentation"]:
             if "ACC" in self.opt["metric_names"]:
-                self.metric["ACC_SEG"] = ACCSEG(num_classes=self.opt["classes"], sigmoid_normalization=self.opt["sigmoid_normalization"])
+                self.metric["ACC_SEG"] = ACCSEG(num_classes=self.seg_classes, sigmoid_normalization=self.opt["sigmoid_normalization"])
+
             # optionally add IoU, DSC, JI
             if "IoU" in self.opt["metric_names"]:
                 from lib.metrics.ISIC2018 import IoU
@@ -150,7 +151,8 @@ class ISIC2018Trainer:
                 
                 log_fmt = "[{}]  epoch:[{:05d}/{:05d}]  lr:{:.6f}  train_loss:{:.6f}  train_DSC:{:.6f}  train_IoU:{:.6f}  train_ACC_seg:{:.6f}  train_ACC_cls:{:.6f}  train_JI:{:.6f}  valid_DSC:{:.6f}  valid_IoU:{:.6f}  valid_ACC_seg:{:.6f}  valid_ACC_cls:{:.6f}  valid_JI:{:.6f}  valid_F1:{:.6f}  valid_AUC:{:.6f}  best_JI:{:.6f}"
 
-            print(log_fmt.format(*log_items))
+            log_str = log_fmt.format(*log_items)
+            print(log_str)
             if not self.opt["optimize_params"]:
                 utils.pre_write_txt(log_str, self.log_txt_path)
 
@@ -203,7 +205,7 @@ class ISIC2018Trainer:
                 seg_loss = self.loss_function(seg_out, seg_target)
                 total_loss = seg_loss if total_loss is None else total_loss + seg_loss
 
-            if cls_out is not None and cls_out.numel() > 0:
+            if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
                 cls_target_idx = cls_target.argmax(dim=1)
                 cls_loss = self.cls_loss_function(cls_out, cls_target_idx)
                 total_loss = cls_loss if total_loss is None else total_loss + cls_loss
@@ -226,7 +228,7 @@ class ISIC2018Trainer:
                     mode="train"
                 )
 
-            if cls_out is not None and cls_out.numel() > 0:
+            if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
                 self.calculate_metric_and_update_statistcs(
                     cls_out.cpu().float(),
                     cls_target.argmax(dim=1).cpu(),
@@ -263,6 +265,8 @@ class ISIC2018Trainer:
 
                 output = self.model(input_tensor)
 
+                seg_out = None
+                cls_out = None
                 if isinstance(output, dict):
                     seg_out = output.get("segmentation")
                     cls_out = output.get("classification")
@@ -274,6 +278,8 @@ class ISIC2018Trainer:
                 else:
                     if self.opt["segmentation"]:
                         seg_out = output
+                    elif self.opt["classification"]:
+                        cls_out = output
 
                 if seg_out is not None:
                     self.calculate_metric_and_update_statistcs(
@@ -283,7 +289,7 @@ class ISIC2018Trainer:
                         mode="valid"
                     )
 
-                if cls_out is not None and cls_out.numel() > 0:
+                if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
                     self.calculate_metric_and_update_statistcs(
                         cls_out.cpu(),
                         cls_target.argmax(dim=1).cpu(),
@@ -291,7 +297,8 @@ class ISIC2018Trainer:
                         mode="valid"
                     )
 
-            cur_JI = self.statistics_dict["valid"]["JI_sum"] / self.statistics_dict["valid"]["count"]
+            valid_count = self.statistics_dict["valid"]["count"]
+            cur_JI = self.statistics_dict["valid"]["JI_sum"] / valid_count if valid_count > 0 else 0.0
 
             if (not self.opt["optimize_params"]) and (epoch + 1) % self.save_epoch_freq == 0:
                 self.save(epoch, cur_JI, self.best_metric, type="normal")

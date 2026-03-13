@@ -74,7 +74,7 @@ def get_metric(opt):
             elif metric_name == "ACC":
                 # segmentation or classification ACC
                 if opt.get("segmentation", True):
-                    metrics[metric_name] = ISIC2018.ACCSEG(nnum_classes=num_classes, sigmoid_normalization=opt["sigmoid_normalization"])
+                    metrics[metric_name] = ISIC2018.ACCSEG(num_classes=num_classes, sigmoid_normalization=opt["sigmoid_normalization"])
                 elif opt.get("classification", False):
                     metrics[metric_name] = ISIC2018.ACCCLS()
             
