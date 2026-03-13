@@ -294,10 +294,10 @@ def main():
         params["segmentation"] = False
         params["classification"] = True
     elif args.task == "multitask":
-        params["segmentation"] = hasattr(model, "segmentation_head")
-        params["classification"] = hasattr(model, "classification_head")
+        params["segmentation"] = True if hasattr(model, "segmentation_head") else False
+        params["classification"] = True if hasattr(model, "classification_head") else False
 
-    print(f"Segmentation: {params['segmentation']}, Classification: {params['classification']}")
+    print(f"Segmentation head: {params['segmentation']}, Classification head: {params['classification']}")
 
     # initialize the tester
     tester = testers.get_tester(params, model)
