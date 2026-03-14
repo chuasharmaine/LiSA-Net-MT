@@ -217,6 +217,11 @@ class ISIC2018Trainer:
                 seg_loss = self.loss_function(seg_out, seg_target)
                 total_loss = seg_loss if total_loss is None else total_loss + seg_loss
 
+            if cls_out is not None and cls_target is not None:
+                cls_target = cls_target.long()
+                cls_loss = self.cls_loss_function(cls_out.float(), cls_target)
+                total_loss = cls_loss if total_loss is None else total_loss + cls_loss
+
             if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
                 cls_target_idx = cls_target.argmax(dim=1)
 
@@ -236,19 +241,22 @@ class ISIC2018Trainer:
                 print("WARNING: no loss computed for this batch!")
 
             # update metrics
-            if seg_out is not None:
+            if seg_out is not None and seg_target is not None:
+                seg_pred = seg_out.argmax(dim=1) if seg_out.ndim == 4 else seg_out
                 self.calculate_metric_and_update_statistcs(
-                    seg_out.cpu().float(),
-                    seg_target.cpu().float(),
+                    seg_pred.cpu(),
+                    seg_target.cpu(),
                     len(input_tensor),
                     loss=total_loss.cpu() if total_loss is not None else None,
                     mode="train"
                 )
 
             if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
+                cls_pred = cls_out.argmax(dim=1)
+                cls_true = cls_target.argmax(dim=1)
                 self.calculate_metric_and_update_statistcs(
-                    cls_out.cpu().float(),
-                    cls_target.argmax(dim=1).cpu(),
+                    cls_pred.cpu(),
+                    cls_true.cpu(),
                     len(input_tensor),
                     loss=total_loss.cpu() if total_loss is not None else None,
                     mode="train"
@@ -300,8 +308,13 @@ class ISIC2018Trainer:
                         cls_out = output
 
                 if seg_out is not None and seg_target is not None:
+                    if self.seg_classes == 1:
+                        pred_prob = torch.sigmoid(seg_out)
+                    else:
+                        pred_prob = torch.softmax(seg_out, dim=1)
+
                     self.calculate_metric_and_update_statistcs(
-                        seg_out.cpu().float(),
+                        pred_prob.cpu().float(),
                         seg_target.cpu().float(),
                         len(input_tensor),
                         loss=None,
@@ -356,8 +369,20 @@ class ISIC2018Trainer:
             # segmentation metrics
             if metric_name == "IoU":
                 area_intersect, area_union, _, _ = metric_func(output, target)
-                self.statistics_dict[mode]["total_area_intersect"] += area_intersect.numpy()
-                self.statistics_dict[mode]["total_area_union"] += area_union.numpy()
+                area_intersect_np = area_intersect.numpy()
+                area_union_np = area_union.numpy()
+
+                if area_intersect_np.shape[0] != self.seg_classes:
+                    tmp_intersect = np.zeros((self.seg_classes,), dtype=np.float32)
+                    tmp_union = np.zeros((self.seg_classes,), dtype=np.float32)
+                    length = min(area_intersect_np.shape[0], self.seg_classes)
+                    tmp_intersect[:length] = area_intersect_np[:length]
+                    tmp_union[:length] = area_union_np[:length]
+                    area_intersect_np = tmp_intersect
+                    area_union_np = tmp_union
+
+                self.statistics_dict[mode]["total_area_intersect"] += area_intersect_np
+                self.statistics_dict[mode]["total_area_union"] += area_union_np
             elif metric_name == "ACC_SEG":
                 self.statistics_dict[mode]["ACC_seg_sum"] += metric_func(output, target) * cur_batch_size
             elif metric_name == "JI":

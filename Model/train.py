@@ -9,12 +9,6 @@
 import os
 import argparse
 
-# for testing on CPU
-# try:
-#     import nni
-# except ImportError:
-#     nni = None
-
 import torch
 
 from lib import utils, dataloaders, models, losses, metrics, trainers

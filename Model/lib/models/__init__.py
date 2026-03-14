@@ -197,7 +197,7 @@ def get_model_optimizer_lr_scheduler(opt):
             model = UNet(n_channels=opt["in_channels"], n_classes=opt["seg_classes"])
 
         elif opt["model_name"] == "EGEUNet":
-            model = EGEUNet(input_channels=opt["in_channels"], num_classes=opt["seg_classes"])
+            model = EGEUNet(input_channels=opt["in_channels"], num_classes=2)
             
         elif opt["model_name"] == "MobileNetV2":
             model = MobileNetV2(in_channels=opt["in_channels"], out_channels=opt["classes"], input_size=opt["resize_shape"][0], width_mult=1.)
@@ -435,7 +435,7 @@ def get_model(opt):
             model = UNet(n_channels=opt["in_channels"], n_classes=opt["seg_classes"])
 
         elif opt["model_name"] == "EGEUNet":
-            model = EGEUNet(input_channels=opt["in_channels"], num_classes=opt["seg_classes"])
+            model = EGEUNet(input_channels=opt["in_channels"], num_classes=2)
 
         elif opt["model_name"] == "MobileNetV2":
             model = MobileNetV2(in_channels=opt["in_channels"], out_channels=opt["classes"], input_size=opt["resize_shape"][0], width_mult=1.)
