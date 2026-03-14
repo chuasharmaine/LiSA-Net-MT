@@ -9,6 +9,11 @@
 import os
 import argparse
 
+try:
+    import nni
+except ImportError:
+    nni = None
+    
 import torch
 
 from lib import utils, dataloaders, models, metrics, testers

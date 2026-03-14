@@ -3,6 +3,10 @@ import time
 import numpy as np
 import datetime
 
+# try:
+#     import nni
+# except ImportError:
+#     nni = None
 import nni
 import torch
 import torch.optim as optim
@@ -35,20 +39,20 @@ class ISIC2018Trainer:
 
         self.cls_classes = opt.get("cls_classes")
         if self.cls_classes is None:
-            self.cls_classes = 2  # Changed from 1 to 2
+            self.cls_classes = 2  
+
+        self.seg_guided_cls = opt.get("seg_guided_cls", False)
 
         # Segmentation metrics
         if self.opt["segmentation"]:
             if "ACC" in self.opt["metric_names"]:
                 self.metric["ACC_SEG"] = ACCSEG(num_classes=self.seg_classes, sigmoid_normalization=self.opt["sigmoid_normalization"])
-
-            # optionally add IoU, DSC, JI
             if "IoU" in self.opt["metric_names"]:
                 from lib.metrics.ISIC2018 import IoU
                 self.metric["IoU"] = IoU()
             if "DSC" in self.opt["metric_names"]:
-                from lib.metrics.ISIC2018 import DSC
-                self.metric["DSC"] = DSC()
+                from lib.metrics.ISIC2018 import DICE
+                self.metric["DSC"] = DICE()
             if "JI" in self.opt["metric_names"]:
                 from lib.metrics.ISIC2018 import JI
                 self.metric["JI"] = JI()
@@ -144,7 +148,7 @@ class ISIC2018Trainer:
             log_fmt = "[{}]  epoch:[{:05d}/{:05d}]  lr:{:.6f}  train_loss:{:.6f}  train_DSC:{:.6f}  train_IoU:{:.6f}  train_ACC_seg:{:.6f}  train_JI:{:.6f}  valid_DSC:{:.6f}  valid_IoU:{:.6f}  valid_ACC_seg:{:.6f}  valid_JI:{:.6f}  best_JI:{:.6f}"
 
             if self.opt["classification"]:
-                log_items.insert(7, train_ACC_cls)  # insert train_ACC_cls after train_ACC_seg
+                log_items.insert(7, train_ACC_cls)
                 log_items.append(valid_ACC_cls)
                 log_items.append(valid_F1)
                 log_items.append(valid_AUC)
@@ -168,14 +172,18 @@ class ISIC2018Trainer:
 
         for batch_idx, batch in enumerate(self.train_data_loader):
 
-            if self.opt["segmentation"] and self.opt["classification"]:
+            if len(batch) == 3:
                 input_tensor, seg_target, cls_target = batch
-            elif self.opt["segmentation"]:
-                input_tensor, seg_target = batch
-                cls_target = None
-            elif self.opt["classification"]:
-                input_tensor, cls_target = batch
-                seg_target = None
+            elif len(batch) == 2:
+                if self.opt["segmentation"]:
+                    input_tensor, seg_target = batch
+                    cls_target = None
+                else:
+                    input_tensor, cls_target = batch
+                    seg_target = None
+            elif len(batch) == 1:
+                input_tensor = batch[0]
+                seg_target = cls_target = None
 
             input_tensor = input_tensor.to(self.device)
             if seg_target is not None:
@@ -186,13 +194,17 @@ class ISIC2018Trainer:
             output = self.model(input_tensor)
             seg_out = None
             cls_out = None
+
             if isinstance(output, dict):
                 seg_out = output.get("segmentation")
                 cls_out = output.get("classification")
+            elif isinstance(output, tuple):
+                if self.opt["segmentation"]:
+                    seg_out = output[0] if len(output) > 0 else None
+                if self.opt["classification"]:
+                    cls_out = output[1] if len(output) > 1 else None
             else:
-                if self.opt["segmentation"] and self.opt["classification"]:
-                    seg_out, cls_out = output
-                elif self.opt["segmentation"]:
+                if self.opt["segmentation"]:
                     seg_out = output
                 elif self.opt["classification"]:
                     cls_out = output
@@ -200,13 +212,18 @@ class ISIC2018Trainer:
             # compute loss
             total_loss = None
 
-            if seg_out is not None:
+            if seg_out is not None and seg_target is not None:
                 seg_target = seg_target.long()
                 seg_loss = self.loss_function(seg_out, seg_target)
                 total_loss = seg_loss if total_loss is None else total_loss + seg_loss
 
             if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
                 cls_target_idx = cls_target.argmax(dim=1)
+
+                if self.seg_guided_cls and seg_out is not None:
+                    seg_feat = torch.mean(seg_out, dim=(2,3))
+                    cls_out = cls_out + 0.1 * seg_feat
+
                 cls_loss = self.cls_loss_function(cls_out, cls_target_idx)
                 total_loss = cls_loss if total_loss is None else total_loss + cls_loss
 
@@ -267,6 +284,7 @@ class ISIC2018Trainer:
 
                 seg_out = None
                 cls_out = None
+                
                 if isinstance(output, dict):
                     seg_out = output.get("segmentation")
                     cls_out = output.get("classification")
@@ -281,19 +299,21 @@ class ISIC2018Trainer:
                     elif self.opt["classification"]:
                         cls_out = output
 
-                if seg_out is not None:
+                if seg_out is not None and seg_target is not None:
                     self.calculate_metric_and_update_statistcs(
-                        seg_out.cpu(),
-                        seg_target.cpu(),
+                        seg_out.cpu().float(),
+                        seg_target.cpu().float(),
                         len(input_tensor),
+                        loss=None,
                         mode="valid"
                     )
 
                 if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
                     self.calculate_metric_and_update_statistcs(
-                        cls_out.cpu(),
+                        cls_out.cpu().float(),
                         cls_target.argmax(dim=1).cpu(),
                         len(input_tensor),
+                        loss=None,
                         mode="valid"
                     )
 
@@ -323,8 +343,15 @@ class ISIC2018Trainer:
         for i, class_name in self.opt["index_to_class_dict"].items():
             if i < len(mask) and mask[i] == 1:
                 self.statistics_dict[mode]["class_count"][class_name] += cur_batch_size
-        if mode == "train":
+        if loss is not None and mode == "train":
             self.statistics_dict[mode]["loss"] += loss.item() * cur_batch_size
+        for metric_name in self.opt["metric_names"]:
+            if self.opt["segmentation"] and metric_name in ["DSC", "JI", "IoU", "ACC_SEG"]:
+                self.statistics_dict["train"][metric_name]["avg"] = 0.0
+                self.statistics_dict["valid"][metric_name]["avg"] = 0.0
+            if self.opt["classification"] and metric_name in ["ACC_CLS", "F1_MACRO", "AUC_ROC"]:
+                self.statistics_dict["train"][metric_name]["avg"] = 0.0
+                self.statistics_dict["valid"][metric_name]["avg"] = 0.0
         for metric_name, metric_func in self.metric.items():
             # segmentation metrics
             if metric_name == "IoU":
@@ -498,14 +525,14 @@ class ISIC2018Trainer:
         else:
             train_ACC_cls = train_F1 = train_AUC = None
 
-        # Build log dynamically
         log_str = f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]  epoch:[{epoch:05d}/{self.end_epoch-1:05d}]  step:[{batch_idx+1:04d}/{len(self.train_data_loader):04d}]  lr:{self.optimizer.param_groups[0]['lr']:.6f}  loss:{self.statistics_dict['train']['loss']/max(1, self.statistics_dict['train']['count']):.6f}"
+
+        train_ACC_cls = 0 if train_ACC_cls is None else train_ACC_cls
+        train_F1 = 0 if train_F1 is None else train_F1
+        train_AUC = 0 if train_AUC is None else train_AUC
 
         if self.opt["segmentation"]:
             log_str += f"  DSC:{train_DSC:.6f}  IoU:{train_mean_IoU:.6f}  ACC_seg:{train_ACC_seg:.6f}  JI:{train_JI:.6f}"
-
-        if self.opt["classification"]:
-            log_str += f"  ACC_cls:{train_ACC_cls:.6f}  F1_MACRO:{train_F1:.6f}  AUC_ROC:{train_AUC:.6f}"
 
         print(log_str)
 
