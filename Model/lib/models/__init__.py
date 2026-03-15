@@ -49,6 +49,11 @@ from .PMFSNet import PMFSNet
 from .LiSANet import LiSANet
 from .LiSANetMT import LiSANetMT
 from .EGEUNet import EGEUNet
+from .ResNet50 import ResNet50
+from .DenseNet121 import DenseNet121
+from .EfficientNetV2 import EfficientNetV2
+from .MobileNetV3 import MobileNetV3
+
 
 
 
@@ -198,7 +203,19 @@ def get_model_optimizer_lr_scheduler(opt):
 
         elif opt["model_name"] == "EGEUNet":
             model = EGEUNet(input_channels=opt["in_channels"], num_classes=2)
-            
+        
+        elif opt["model_name"] == "ResNet50":
+            model = ResNet50(num_classes=opt["cls_classes"], pretrained=True)
+
+        elif opt["model_name"] == "DenseNet121":
+            model = DenseNet121(num_classes=opt["cls_classes"], pretrained=True)
+
+        elif opt["model_name"] == "EfficientNetV2":
+            model = EfficientNetV2(num_classes=opt["cls_classes"], pretrained=True)
+
+        elif opt["model_name"] in ["MobileNetV3", "mobilenetv3_large_100"]:
+            model = MobileNetV3(num_classes=opt["cls_classes"], pretrained=True)
+
         elif opt["model_name"] == "MobileNetV2":
             model = MobileNetV2(in_channels=opt["in_channels"], out_channels=opt["classes"], input_size=opt["resize_shape"][0], width_mult=1.)
 
@@ -249,7 +266,14 @@ def get_model_optimizer_lr_scheduler(opt):
         optimizer = optim.Adam(model.parameters(), lr=opt["learning_rate"], weight_decay=opt["weight_decay"])
 
     elif opt["optimizer_name"] == "AdamW":
-        optimizer = optim.AdamW(model.parameters(), lr=opt["learning_rate"], weight_decay=opt["weight_decay"])
+        if opt.get("task") == "multitask" and hasattr(model, "segmentation_branch") and hasattr(model, "classification_branch"):
+            optimizer = optim.AdamW([
+                {"params": model.segmentation_branch.parameters(), "lr": opt["lr_seg"]},
+                {"params": model.classification_branch.parameters(), "lr": opt["lr_cls"]}
+            ], weight_decay=opt["weight_decay"])
+        else:
+            if opt["optimizer_name"] == "AdamW":
+                optimizer = optim.AdamW(model.parameters(), lr=opt["learning_rate"], weight_decay=opt["weight_decay"])
 
     elif opt["optimizer_name"] == "Adamax":
         optimizer = optim.Adamax(model.parameters(), lr=opt["learning_rate"], weight_decay=opt["weight_decay"])
@@ -436,6 +460,18 @@ def get_model(opt):
 
         elif opt["model_name"] == "EGEUNet":
             model = EGEUNet(input_channels=opt["in_channels"], num_classes=2)
+
+        elif opt["model_name"] == "ResNet50":
+            model = ResNet50(num_classes=opt["cls_classes"], pretrained=True)
+
+        elif opt["model_name"] == "DenseNet121":
+            model = DenseNet121(num_classes=opt["cls_classes"], pretrained=True)
+
+        elif opt["model_name"] == "EfficientNetV2":
+            model = EfficientNetV2(num_classes=opt["cls_classes"], pretrained=True)
+
+        elif opt["model_name"] in ["MobileNetV3", "mobilenetv3_large_100"]:
+            model = MobileNetV3(num_classes=opt["cls_classes"], pretrained=True)
 
         elif opt["model_name"] == "MobileNetV2":
             model = MobileNetV2(in_channels=opt["in_channels"], out_channels=opt["classes"], input_size=opt["resize_shape"][0], width_mult=1.)

@@ -218,9 +218,25 @@ class ISIC2018Trainer:
                 total_loss = seg_loss if total_loss is None else total_loss + seg_loss
 
             if cls_out is not None and cls_target is not None:
-                cls_target = cls_target.long()
-                cls_loss = self.cls_loss_function(cls_out.float(), cls_target)
+                if cls_target.ndim > 1 and cls_target.shape[1] > 1:
+                    cls_target_idx = cls_target.argmax(dim=1)
+                else:
+                    cls_target_idx = cls_target.long() 
+
+                cls_loss = self.cls_loss_function(cls_out, cls_target_idx)
                 total_loss = cls_loss if total_loss is None else total_loss + cls_loss
+
+                if cls_out.ndim > 1:
+                    cls_pred = cls_out.argmax(dim=1)
+                else:
+                    cls_pred = cls_out
+                self.calculate_metric_and_update_statistcs(
+                    cls_pred.cpu(),
+                    cls_target_idx.cpu(),
+                    len(input_tensor),
+                    loss=total_loss.cpu() if total_loss is not None else None,
+                    mode="train"
+                )
 
             if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
                 cls_target_idx = cls_target.argmax(dim=1)
@@ -251,12 +267,27 @@ class ISIC2018Trainer:
                     mode="train"
                 )
 
-            if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
-                cls_pred = cls_out.argmax(dim=1)
-                cls_true = cls_target.argmax(dim=1)
+            if cls_out is not None and cls_target is not None:
+                if cls_target.ndim > 1 and cls_target.shape[1] > 1:
+                    cls_target_idx = cls_target.argmax(dim=1)
+                else:
+                    cls_target_idx = cls_target.long()  # already indices
+
+                # Apply seg-guided classification if enabled
+                if self.seg_guided_cls and seg_out is not None:
+                    seg_feat = torch.mean(seg_out, dim=(2,3))
+                    cls_out = cls_out + 0.1 * seg_feat
+
+                cls_loss = self.cls_loss_function(cls_out, cls_target_idx)
+                total_loss = cls_loss if total_loss is None else total_loss + cls_loss
+
+                if cls_out.ndim > 1:
+                    cls_pred = cls_out.argmax(dim=1)
+                else:
+                    cls_pred = cls_out
                 self.calculate_metric_and_update_statistcs(
                     cls_pred.cpu(),
-                    cls_true.cpu(),
+                    cls_target_idx.cpu(),
                     len(input_tensor),
                     loss=total_loss.cpu() if total_loss is not None else None,
                     mode="train"
@@ -321,10 +352,19 @@ class ISIC2018Trainer:
                         mode="valid"
                     )
 
-                if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
+                if cls_out is not None and cls_target is not None:
+                    if cls_target.ndim > 1 and cls_target.shape[1] > 1:
+                        cls_target_idx = cls_target.argmax(dim=1)
+                    else:
+                        cls_target_idx = cls_target.long()
+                    if cls_out.ndim > 1:
+                        cls_pred = cls_out.argmax(dim=1)
+                    else:
+                        cls_pred = cls_out
+
                     self.calculate_metric_and_update_statistcs(
-                        cls_out.cpu().float(),
-                        cls_target.argmax(dim=1).cpu(),
+                        cls_pred.cpu(),
+                        cls_target_idx.cpu(),
                         len(input_tensor),
                         loss=None,
                         mode="valid"

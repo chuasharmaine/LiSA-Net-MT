@@ -66,7 +66,11 @@ class ACCCLS:
         pass
 
     def __call__(self, input, target):
-        pred = torch.argmax(input, dim=1)
+        if input.ndim > 1:
+            pred = torch.argmax(input, dim=1)
+        else:
+            pred = input
+
         assert pred.shape == target.shape, "pred and target shapes must match"
         pred = pred.cpu().numpy()
         target = target.cpu().numpy()
