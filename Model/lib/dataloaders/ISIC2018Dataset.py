@@ -36,7 +36,6 @@ class ISIC2018Dataset(Dataset):
         self.classification = opt["classification"]
 
         self.root = opt["dataset_path"]
-        self.resize_shape = (256, 256)
 
         self.seg_images_list = []
         self.seg_labels_list = []
@@ -121,12 +120,6 @@ class ISIC2018Dataset(Dataset):
             label = torch.tensor(self.cls_labels_dict[filename], dtype=torch.float32)
             if not self.segmentation:
                 image = cv2.imread(cls_image_path, cv2.IMREAD_COLOR)
-
-        # Resize all images/masks to 256x256
-        if image is not None:
-            image = cv2.resize(image, self.resize_shape, interpolation=cv2.INTER_LINEAR)
-        if mask is not None:
-            mask = cv2.resize(mask, self.resize_shape, interpolation=cv2.INTER_NEAREST)
 
         # Apply transforms
         image, mask = self.transforms_dict[self.mode](image, mask)

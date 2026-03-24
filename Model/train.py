@@ -121,7 +121,7 @@ def main():
     params["scaling_version"] = args.scaling_version
     if args.epoch is not None:
         params["end_epoch"] = args.epoch
-        params["save_epoch_freq"] = args.epoch // 4
+        params["save_epoch_freq"] = max(1, args.epoch // 4)
 
     params["seg_guided_cls"] = True   # False if normal multitask
 
@@ -170,6 +170,9 @@ def main():
         params["seg_guided_cls"] = True
         params["lr_seg"] = 0.005 
         params["lr_cls"] = 0.0003  
+
+    if args.model == "EGEUNet" and params["segmentation"]:
+        params["learning_rate"] = 0.001
 
     print(f"Segmentation training: {params['segmentation']}, Classification training: {params['classification']}")
 
