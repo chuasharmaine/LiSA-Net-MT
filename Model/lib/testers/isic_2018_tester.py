@@ -181,8 +181,9 @@ class ISIC2018Tester:
             metric_name: {class_name: 0.0 for _, class_name in self.opt["index_to_class_dict"].items()}
             for metric_name in self.opt["metric_names"]
         }
-        statistics_dict["total_area_intersect"] = np.zeros((self.opt["classes"],))
-        statistics_dict["total_area_union"] = np.zeros((self.opt["classes"],))
+        num_classes = self.opt.get("seg_classes") or self.opt.get("cls_classes") or 1
+        statistics_dict["total_area_intersect"] = np.zeros((num_classes,))
+        statistics_dict["total_area_union"] = np.zeros((num_classes,))
         statistics_dict["JI_sum"] = 0.0
         statistics_dict["ACC_seg_sum"] = 0.0
         statistics_dict["ACC_cls_sum"] = 0.0

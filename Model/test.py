@@ -9,6 +9,11 @@
 import os
 import argparse
 
+try:
+    import nni
+except ImportError:
+    nni = None
+    
 import torch
 
 from lib import utils, dataloaders, models, metrics, testers
@@ -222,8 +227,8 @@ params_ISIC_2018 = {
     "factor": 0.3,
     # ————————————————————————————————————————————    Loss And Metric     ———————————————————————————————————————————————————————
     "metric_names": { 
-        "segmentation": ["DSC", "IoU", "JI", "ACC"],
-        "classification": ["ACC", "ROC-AUC", "F1"]
+        "segmentation": ["DSC", "IoU", "JI", "ACC_SEG"],
+        "classification": ["ACC_CLS", "ROC-AUC", "F1"]
     },
     "loss_function_name": "DiceLoss",
     "class_weight": [0.029, 1 - 0.029],

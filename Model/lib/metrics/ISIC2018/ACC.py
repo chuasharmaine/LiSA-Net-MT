@@ -70,9 +70,15 @@ class ACCCLS:
         pass
 
     def __call__(self, input, target):
-        pred = torch.argmax(input, dim=1)
+        if input.ndim > 1:
+            pred = torch.argmax(input, dim=1)
+        else:
+            pred = input
+          
         if target.ndim == 2:
             target = torch.argmax(target, dim=1)
+
+        assert pred.shape == target.shape, "pred and target shapes must match"
         correct = (pred == target).sum()
         total = target.size(0)
         return correct.float() / total 

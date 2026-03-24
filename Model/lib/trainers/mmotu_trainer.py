@@ -3,6 +3,10 @@ import time
 import numpy as np
 import datetime
 
+# try:
+#     import nni
+# except ImportError:
+#     nni = None
 import nni
 import torch
 import torch.optim as optim

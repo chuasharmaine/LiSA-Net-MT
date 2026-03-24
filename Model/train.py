@@ -32,10 +32,11 @@ params_ISIC_2018 = {
     # —————————————————————————————————————————————    Data Loading     ——————————————————————————————————————————————————————
     "dataset_name": "ISIC-2018",
     "dataset_path": r"./datasets/ISIC-2018",
-    # "batch_size": 2,
-    # "num_workers": 0,
     "batch_size": 32,
     "num_workers": 2,
+    # for testing on CPU
+    # "batch_size": 2,
+    # "num_workers": 0,
     # —————————————————————————————————————————————    Model     ——————————————————————————————————————————————————————
     "model_name": "PMFSNet",
     "in_channels": 3,
@@ -82,8 +83,9 @@ params_ISIC_2018 = {
     "optimize_params": False,
     "run_dir": r"./runs",
     "start_epoch": 0,
-    # "end_epoch": 1,
     "end_epoch": 150,
+    # for testing on CPU
+    # "end_epoch": 1,
     "best_metric": 0,
     "terminal_show_freq": 20,
     "save_epoch_freq": 50,
@@ -121,10 +123,15 @@ def main():
         params["end_epoch"] = args.epoch
         params["save_epoch_freq"] = args.epoch // 4
 
+    params["seg_guided_cls"] = True   # False if normal multitask
+
     # launch initialization
     os.environ["CUDA_VISIBLE_DEVICES"] = params["CUDA_VISIBLE_DEVICES"]
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
     utils.reproducibility(params["seed"], params["deterministic"], params["benchmark"])
+    
+    # for testing on CPU
+    # params["device"] = torch.device("cpu")
 
     # get the cuda device
     if params["cuda"]:
@@ -140,16 +147,29 @@ def main():
         params["segmentation"] = True
         params["classification"] = False
         params["metric_names"] = ["ACC_SEG", "DSC", "IoU", "JI"]
+        params["seg_classes"] = 2 
+        params["cls_classes"] = None 
+        params["lr_seg"] = 0.005 
+        params["lr_cls"] = None 
 
     elif args.task == "classification":
         params["segmentation"] = False
         params["classification"] = True
         params["metric_names"] = ["ACC_CLS", "AUC_ROC", "F1_MACRO"]
+        params["seg_classes"] = None 
+        params["cls_classes"] = 7 
+        params["lr_seg"] = None 
+        params["lr_cls"] = 0.0003 
 
     elif args.task == "multitask":
         params["segmentation"] = True
         params["classification"] = True
         params["metric_names"] = ["ACC_SEG", "DSC", "IoU", "JI", "ACC_CLS", "AUC_ROC", "F1_MACRO"]
+        params["seg_classes"] = 2 
+        params["cls_classes"] = 7 
+        params["seg_guided_cls"] = True
+        params["lr_seg"] = 0.005 
+        params["lr_cls"] = 0.0003  
 
     print(f"Segmentation training: {params['segmentation']}, Classification training: {params['classification']}")
 

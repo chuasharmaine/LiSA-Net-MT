@@ -2,6 +2,10 @@ import os
 import time
 import numpy as np
 
+# try:
+#     import nni
+# except ImportError:
+#     nni = None
 import nni
 import torch
 import torch.optim as optim

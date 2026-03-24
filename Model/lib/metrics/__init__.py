@@ -71,11 +71,11 @@ def get_metric(opt):
             elif metric_name == "JI":
                 metrics[metric_name] = ISIC2018.JI(num_classes=num_classes, sigmoid_normalization=opt["sigmoid_normalization"])
 
-            elif metric_name == "ACC_SEG":
-                metrics[metric_name] = ISIC2018.ACCSEG(num_classes=num_classes, sigmoid_normalization=opt["sigmoid_normalization"])
+            elif metric_name == "ACC_SEG" and opt.get("segmentation", True):
+                metrics[metric_name] = ISIC2018.ACCSEG(num_classes=num_classes, sigmoid_normalization=opt.get("sigmoid_normalization", False))
             
-            elif metric_name == "ACC_CLS":
-                metrics[metric_name] = ISIC2018.ACCCLS(num_classes=num_classes, sigmoid_normalization=opt["sigmoid_normalization"])
+            elif metric_name == "ACC_CLS" and opt.get("classification", False):
+                metrics[metric_name] = ISIC2018.ACCCLS()
             
             elif metric_name == "AUC_ROC":
                 metrics[metric_name] = ISIC2018.AUC_ROC(num_classes=num_classes, sigmoid_normalization=opt["sigmoid_normalization"])
