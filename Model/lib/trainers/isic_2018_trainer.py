@@ -33,19 +33,14 @@ class ISIC2018Trainer:
         self.loss_function = loss_function
         self.metric = metric
         self.device = opt["device"]
-        self.seg_classes = opt.get("seg_classes")
-        if self.seg_classes is None:
-            self.seg_classes = 1
-
-        self.cls_classes = opt.get("cls_classes")
-        if self.cls_classes is None:
-            self.cls_classes = 2  
+        self.seg_classes = opt.get("seg_classes", 1)
+        self.cls_classes = opt.get("cls_classes", 2) 
 
         self.seg_guided_cls = opt.get("seg_guided_cls", False)
 
         # Segmentation metrics
         if self.opt["segmentation"]:
-            if "ACC" in self.opt["metric_names"]:
+            if "ACC_SEG" in self.opt["metric_names"]:
                 self.metric["ACC_SEG"] = ACCSEG(num_classes=self.seg_classes, sigmoid_normalization=self.opt["sigmoid_normalization"])
             if "IoU" in self.opt["metric_names"]:
                 from lib.metrics.ISIC2018 import IoU
@@ -69,9 +64,6 @@ class ISIC2018Trainer:
                 from lib.metrics.ISIC2018 import AUC_ROC
                 self.metric["AUC_ROC"] = AUC_ROC()
 
-        if self.opt["segmentation"] and "ACC_SEG" in self.opt["metric_names"]:
-            self.metric["ACC_SEG"] = ACCSEG(num_classes=self.opt["seg_classes"], sigmoid_normalization=self.opt["sigmoid_normalization"])
-        
         if not self.opt["optimize_params"]:
             if self.opt["resume"] is None:
                 self.execute_dir = os.path.join(opt["run_dir"], utils.datestr() + "_" + opt["model_name"] + "_" + opt["dataset_name"])
@@ -221,28 +213,7 @@ class ISIC2018Trainer:
                 total_loss = seg_loss if total_loss is None else total_loss + seg_loss
 
             if cls_out is not None and cls_target is not None:
-                if cls_target.ndim > 1 and cls_target.shape[1] > 1:
-                    cls_target_idx = cls_target.argmax(dim=1)
-                else:
-                    cls_target_idx = cls_target.long() 
-
-                cls_loss = self.cls_loss_function(cls_out, cls_target_idx)
-                total_loss = cls_loss if total_loss is None else total_loss + cls_loss
-
-                if cls_out.ndim > 1:
-                    cls_pred = cls_out.argmax(dim=1)
-                else:
-                    cls_pred = cls_out
-                self.calculate_metric_and_update_statistcs(
-                    cls_pred.cpu(),
-                    cls_target_idx.cpu(),
-                    len(input_tensor),
-                    loss=total_loss.cpu() if total_loss is not None else None,
-                    mode="train"
-                )
-
-            if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
-                cls_target_idx = cls_target.argmax(dim=1)
+                cls_target_idx = cls_target.argmax(dim=1) if (cls_target.ndim > 1 and cls_target.shape[1] > 1) else cls_target.long()
 
                 if self.seg_guided_cls and seg_out is not None:
                     seg_feat = torch.mean(seg_out, dim=(2,3))
@@ -250,6 +221,15 @@ class ISIC2018Trainer:
 
                 cls_loss = self.cls_loss_function(cls_out, cls_target_idx)
                 total_loss = cls_loss if total_loss is None else total_loss + cls_loss
+                cls_pred = cls_out.argmax(dim=1) if cls_out.ndim > 1 else cls_out
+
+                self.calculate_metric_and_update_statistcs(
+                    cls_pred.cpu(),
+                    cls_target_idx.cpu(),
+                    len(input_tensor),
+                    loss=total_loss.cpu() if total_loss is not None else None,
+                    mode="train"
+                )
 
             # only backward if total_loss is a tensor
             if total_loss is not None:
@@ -265,33 +245,6 @@ class ISIC2018Trainer:
                 self.calculate_metric_and_update_statistcs(
                     seg_pred.cpu(),
                     seg_target.cpu(),
-                    len(input_tensor),
-                    loss=total_loss.cpu() if total_loss is not None else None,
-                    mode="train"
-                )
-
-            if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
-                if cls_target.ndim > 1 and cls_target.shape[1] > 1:
-                    cls_target_idx = cls_target.argmax(dim=1)
-                else:
-                    cls_target_idx = cls_target.long()
-
-                # Apply seg-guided classification if enabled
-                if getattr(self, "seg_guided_cls", False) and seg_out is not None:
-                    seg_feat = torch.mean(seg_out, dim=(2,3))
-                    cls_out = cls_out + 0.1 * seg_feat
-
-                cls_loss = self.cls_loss_function(cls_out, cls_target_idx)
-                total_loss = cls_loss if total_loss is None else total_loss + cls_loss
-
-                if cls_out.ndim > 1:
-                    cls_pred = cls_out.argmax(dim=1)
-                else:
-                    cls_pred = cls_out
-
-                self.calculate_metric_and_update_statistcs(
-                    cls_pred.cpu(),
-                    cls_target_idx.cpu(),
                     len(input_tensor),
                     loss=total_loss.cpu() if total_loss is not None else None,
                     mode="train"
@@ -402,13 +355,6 @@ class ISIC2018Trainer:
                 self.statistics_dict[mode]["class_count"][class_name] += cur_batch_size
         if loss is not None and mode == "train":
             self.statistics_dict[mode]["loss"] += loss.item() * cur_batch_size
-        for metric_name in self.opt["metric_names"]:
-            if self.opt["segmentation"] and metric_name in ["DSC", "JI", "IoU", "ACC_SEG"]:
-                self.statistics_dict["train"][metric_name]["avg"] = 0.0
-                self.statistics_dict["valid"][metric_name]["avg"] = 0.0
-            if self.opt["classification"] and metric_name in ["ACC_CLS", "F1_MACRO", "AUC_ROC"]:
-                self.statistics_dict["train"][metric_name]["avg"] = 0.0
-                self.statistics_dict["valid"][metric_name]["avg"] = 0.0
         for metric_name, metric_func in self.metric.items():
             # segmentation metrics
             if metric_name == "IoU":
@@ -453,7 +399,6 @@ class ISIC2018Trainer:
                 if per_class_metric.ndim == 0:
                     value = per_class_metric.item()
                     self.statistics_dict[mode][metric_name]["avg"] += value * cur_batch_size
-                    return
 
                 mask = mask.to(per_class_metric.device)
                 mask = mask[:len(per_class_metric)]
