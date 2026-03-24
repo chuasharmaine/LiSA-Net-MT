@@ -51,10 +51,14 @@ class ACCSEG(object):
         # 判断预测图和真是标签图的维度大小是否一致
         assert seg.shape == target.shape, "seg和target的维度大小不一致"
         # 转换seg和target数据类型为numpy.ndarray
-        seg = seg.numpy().astype(float)
-        target = target.numpy().astype(float)
+        # 改良变成float tensor
+        seg = seg.float()
+        target = target.float()
+        
+        correct = (seg == target).sum()
+        total = target.numel()
 
-        return cal_accuracy(seg, target)
+        return correct / total
     
 class ACCCLS:
     """
@@ -70,10 +74,11 @@ class ACCCLS:
             pred = torch.argmax(input, dim=1)
         else:
             pred = input
+          
+        if target.ndim == 2:
+            target = torch.argmax(target, dim=1)
 
         assert pred.shape == target.shape, "pred and target shapes must match"
-        pred = pred.cpu().numpy()
-        target = target.cpu().numpy()
         correct = (pred == target).sum()
-        total = target.shape[0]
-        return correct / total
+        total = target.size(0)
+        return correct.float() / total 

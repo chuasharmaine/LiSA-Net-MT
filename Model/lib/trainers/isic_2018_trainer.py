@@ -60,7 +60,7 @@ class ISIC2018Trainer:
         # Classification metrics
         if self.opt["classification"]:
             self.cls_loss_function = nn.CrossEntropyLoss()
-            if "ACC" in self.opt["metric_names"]:
+            if "ACC_CLS" in self.opt["metric_names"]:
                 self.metric["ACC_CLS"] = ACCCLS()
             if "F1_MACRO" in self.opt["metric_names"]:
                 from lib.metrics.ISIC2018 import F1_MACRO
@@ -69,6 +69,9 @@ class ISIC2018Trainer:
                 from lib.metrics.ISIC2018 import AUC_ROC
                 self.metric["AUC_ROC"] = AUC_ROC()
 
+        if self.opt["segmentation"] and "ACC_SEG" in self.opt["metric_names"]:
+            self.metric["ACC_SEG"] = ACCSEG(num_classes=self.opt["seg_classes"], sigmoid_normalization=self.opt["sigmoid_normalization"])
+        
         if not self.opt["optimize_params"]:
             if self.opt["resume"] is None:
                 self.execute_dir = os.path.join(opt["run_dir"], utils.datestr() + "_" + opt["model_name"] + "_" + opt["dataset_name"])
@@ -267,14 +270,14 @@ class ISIC2018Trainer:
                     mode="train"
                 )
 
-            if cls_out is not None and cls_target is not None:
+            if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
                 if cls_target.ndim > 1 and cls_target.shape[1] > 1:
                     cls_target_idx = cls_target.argmax(dim=1)
                 else:
-                    cls_target_idx = cls_target.long()  # already indices
+                    cls_target_idx = cls_target.long()
 
                 # Apply seg-guided classification if enabled
-                if self.seg_guided_cls and seg_out is not None:
+                if getattr(self, "seg_guided_cls", False) and seg_out is not None:
                     seg_feat = torch.mean(seg_out, dim=(2,3))
                     cls_out = cls_out + 0.1 * seg_feat
 
@@ -285,6 +288,7 @@ class ISIC2018Trainer:
                     cls_pred = cls_out.argmax(dim=1)
                 else:
                     cls_pred = cls_out
+
                 self.calculate_metric_and_update_statistcs(
                     cls_pred.cpu(),
                     cls_target_idx.cpu(),
@@ -352,7 +356,7 @@ class ISIC2018Trainer:
                         mode="valid"
                     )
 
-                if cls_out is not None and cls_target is not None:
+                if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
                     if cls_target.ndim > 1 and cls_target.shape[1] > 1:
                         cls_target_idx = cls_target.argmax(dim=1)
                     else:
