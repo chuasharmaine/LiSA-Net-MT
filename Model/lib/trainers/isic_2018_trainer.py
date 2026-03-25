@@ -367,6 +367,11 @@ class ISIC2018Trainer:
 
                     cls_prob = torch.softmax(cls_out, dim=1) if cls_out.ndim > 1 and cls_out.shape[1] > 1 else torch.sigmoid(cls_out)
 
+                    batch_auc = self.metric["AUC_ROC"](cls_prob.cpu(), cls_target_idx.cpu())
+                    print(f"[VALID] Batch {batch_idx+1} AUC: {batch_auc:.4f}")
+
+                    self.statistics_dict["valid"]["AUC_ROC"]["avg"] += batch_auc * len(input_tensor)
+
                     self.calculate_metric_and_update_statistcs(
                         cls_prob.cpu(),
                         cls_target_idx.cpu(),
@@ -376,12 +381,8 @@ class ISIC2018Trainer:
                     )
             valid_count = self.statistics_dict["valid"]["count"]
             cur_JI = self.statistics_dict["valid"]["JI_sum"] / valid_count if valid_count > 0 else 0.0
+            cur_AUC = self.statistics_dict["valid"]["AUC_ROC"]["avg"] / max(1, valid_count)
 
-            if valid_count > 0:
-                self.statistics_dict["valid"]["AUC_ROC"]["avg"] /= valid_count
-                self.statistics_dict["valid"]["F1_MACRO"]["avg"] /= valid_count
-            cur_AUC = self.statistics_dict["valid"]["AUC_ROC"]["avg"]
-            
             if cur_AUC > self.best_metric:
                 self.best_metric = cur_AUC
                 if not self.opt["optimize_params"]:
