@@ -368,7 +368,6 @@ class ISIC2018Trainer:
                     cls_prob = torch.softmax(cls_out, dim=1) if cls_out.ndim > 1 and cls_out.shape[1] > 1 else torch.sigmoid(cls_out)
 
                     batch_auc = self.metric["AUC_ROC"](cls_prob.cpu(), cls_target_idx.cpu())
-                    print(f"[VALID] Batch {batch_idx+1} AUC: {batch_auc:.4f}")
 
                     self.statistics_dict["valid"]["AUC_ROC"]["avg"] += batch_auc * len(input_tensor)
 
