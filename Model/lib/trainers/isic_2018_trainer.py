@@ -365,8 +365,10 @@ class ISIC2018Trainer:
                     else:
                         cls_target_idx = cls_target.long()
 
+                    cls_prob = torch.softmax(cls_out, dim=1) if cls_out.ndim > 1 and cls_out.shape[1] > 1 else torch.sigmoid(cls_out)
+
                     self.calculate_metric_and_update_statistcs(
-                        cls_out.cpu(),
+                        cls_prob.cpu(),
                         cls_target_idx.cpu(),
                         len(input_tensor),
                         loss=None,
@@ -441,7 +443,7 @@ class ISIC2018Trainer:
                 self.statistics_dict[mode]["F1_MACRO"]["avg"] += batch_f1 * cur_batch_size
             elif metric_name == "AUC_ROC":
                 batch_auc = metric_func(output, target)
-                self.statistics_dict[mode]["AUC_ROC"]["avg"] += batch_auc * cur_batch_size
+                self.statistics_dict[mode]["AUC_ROC"]["avg"] += batch_auc
             else:
                 per_class_metric = metric_func(output, target)
 
