@@ -171,7 +171,7 @@ class ISIC2018Trainer:
                     self.best_metric
                 ]
 
-                log_fmt = "[{}]  epoch:[{:05d}/{:05d}]  lr:{:.6f}  train_loss:{:.6f}  train_ACC_cls:{:.6f}  train_F1:{:.6f}  train_AUC:{:.6f}  valid_ACC_cls:{:.6f}  valid_F1:{:.6f}  valid_AUC:{:.6f}  best_JI:{:.6f}"
+                log_fmt = "[{}]  epoch:[{:05d}/{:05d}]  lr:{:.6f}  train_loss:{:.6f}  train_ACC_cls:{:.6f}  train_F1:{:.6f}  train_AUC:{:.6f}  valid_ACC_cls:{:.6f}  valid_F1:{:.6f}  valid_AUC:{:.6f}  best_metric:{:.6f}"
             else:
                 log_items = [
                     datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -189,7 +189,7 @@ class ISIC2018Trainer:
                     self.best_metric
                 ]
 
-                log_fmt = "[{}]  epoch:[{:05d}/{:05d}]  lr:{:.6f}  train_loss:{:.6f}  train_ACC_seg:{:.6f}  train_DSC:{:.6f}  train_IoU:{:.6f}  train_JI:{:.6f}  valid_ACC_seg:{:.6f} valid_DSC:{:.6f}  valid_IoU:{:.6f}   valid_JI:{:.6f}  best_JI:{:.6f}"
+                log_fmt = "[{}]  epoch:[{:05d}/{:05d}]  lr:{:.6f}  train_loss:{:.6f}  train_ACC_seg:{:.6f}  train_DSC:{:.6f}  train_IoU:{:.6f}  train_JI:{:.6f}  valid_ACC_seg:{:.6f} valid_DSC:{:.6f}  valid_IoU:{:.6f}   valid_JI:{:.6f}  best_JI:{:.6f}  best_metric:{:.6f}"
             
             log_str = log_fmt.format(*log_items)
             print(log_str)
@@ -374,9 +374,18 @@ class ISIC2018Trainer:
                         loss=None,
                         mode="valid"
                     )
-
             valid_count = self.statistics_dict["valid"]["count"]
             cur_JI = self.statistics_dict["valid"]["JI_sum"] / valid_count if valid_count > 0 else 0.0
+
+            if valid_count > 0:
+                self.statistics_dict["valid"]["AUC_ROC"]["avg"] /= valid_count
+                self.statistics_dict["valid"]["F1_MACRO"]["avg"] /= valid_count
+            cur_AUC = self.statistics_dict["valid"]["AUC_ROC"]["avg"]
+            
+            if cur_AUC > self.best_metric:
+                self.best_metric = cur_AUC
+                if not self.opt["optimize_params"]:
+                    self.save(epoch, cur_AUC, self.best_metric, type="best")
 
             if (not self.opt["optimize_params"]) and (epoch + 1) % self.save_epoch_freq == 0:
                 self.save(epoch, cur_JI, self.best_metric, type="normal")
