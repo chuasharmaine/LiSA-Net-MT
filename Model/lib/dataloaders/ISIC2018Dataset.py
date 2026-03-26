@@ -117,7 +117,9 @@ class ISIC2018Dataset(Dataset):
             cls_index = index % len(self.cls_images_list)
             cls_image_path = self.cls_images_list[cls_index]
             filename = os.path.splitext(os.path.basename(cls_image_path))[0]
-            label = torch.tensor(self.cls_labels_dict[filename], dtype=torch.float32)
+            label_list = self.cls_labels_dict[filename]
+            label = torch.tensor(label_list, dtype=torch.float32)
+            label = torch.argmax(label).long()
             if not self.segmentation:
                 image = cv2.imread(cls_image_path, cv2.IMREAD_COLOR)
 

@@ -360,6 +360,11 @@ class ISIC2018Trainer:
                     )
 
                 if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
+
+                    print("DEBUG num_classes (metric):", self.metric["AUC_ROC"].num_classes)
+                    print("DEBUG cls_out shape:", cls_out.shape)
+                    print("DEBUG target unique:", torch.unique(cls_target))
+
                     if cls_target.ndim > 1 and cls_target.shape[1] > 1:
                         cls_target_idx = cls_target.argmax(dim=1)
                     else:
