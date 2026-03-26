@@ -34,7 +34,7 @@ class ISIC2018Trainer:
         self.metric = metric
         self.device = opt["device"]
         self.seg_classes = opt.get("seg_classes", 1)
-        self.cls_classes = opt.get("cls_classes", 2)
+        self.cls_classes = opt.get("cls_classes", 7)
         self.best_metric_seg = 0.0
         self.best_metric_cls = 0.0
         if self.cls_classes is None:
@@ -58,7 +58,13 @@ class ISIC2018Trainer:
 
         # Classification metrics
         if self.opt["classification"]:
-            self.cls_loss_function = nn.CrossEntropyLoss()
+            cls_weights = self.opt.get("cls_weights", None)
+            if cls_weights is not None:
+                cls_weights = torch.tensor(cls_weights, dtype=torch.float).to(self.device)
+                if len(cls_weights) != self.cls_classes:
+                    print(f"WARNING: cls_weights length {len(cls_weights)} does not match cls_classes {self.cls_classes}. Ignoring weights.")
+                    cls_weights = None
+            self.cls_loss_function = nn.CrossEntropyLoss(weight=cls_weights)
             if "ACC_CLS" in self.opt["metric_names"]:
                 self.metric["ACC_CLS"] = ACCCLS()
             if "F1_MACRO" in self.opt["metric_names"]:
