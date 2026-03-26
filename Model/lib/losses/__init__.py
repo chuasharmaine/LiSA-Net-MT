@@ -9,30 +9,33 @@
 import torch
 
 from .DiceLoss import DiceLoss
+from .CrossEntropyLoss import CrossEntropyLoss
 
 
 def get_loss_function(opt):
-    if opt["loss_function_name"] == "DiceLoss":
-        # Ensure num_classes is always int
-        num_classes = opt.get("seg_classes", 1)
-        if num_classes is None:
-            num_classes = 1
+    loss_functions = {}
+    device = opt.get("device", "cpu")
+    
+    if opt.get("segmentation", False):
+        seg_classes = opt.get("seg_classes", 1)
+        seg_class_weight = opt.get("class_weight", [1.0] * seg_classes)
+        seg_weight_tensor = torch.FloatTensor(seg_class_weight).to(device)
 
-        # Safely get class_weight
-        class_weight = opt.get("class_weight")
-        if class_weight is None:
-            class_weight = [1.0] * num_classes
-
-        weight_tensor = torch.FloatTensor(class_weight).to(opt.get("device", "cpu"))
-
-        loss_function = DiceLoss(
-            classes=num_classes,
-            weight=weight_tensor,
+        loss_functions["segmentation"] = DiceLoss(
+            classes=seg_classes,
+            weight=seg_weight_tensor,
             sigmoid_normalization=opt.get("sigmoid_normalization", False),
             mode=opt.get("dice_loss_mode", "standard")
         )
+    
+    if opt.get("classification", False):
+        cls_classes = opt.get("cls_classes", 1)
+        cls_class_weight = opt.get("class_weight", [1.0] * cls_classes)
+        cls_weight_tensor = torch.FloatTensor(cls_class_weight).to(device)
 
-    else:
+        loss_functions["classification"] = CrossEntropyLoss(weight=cls_weight_tensor)
+
+    if not loss_functions:
         raise RuntimeError(f"No {opt['loss_function_name']} is available")
-
-    return loss_function
+    
+    return loss_functions

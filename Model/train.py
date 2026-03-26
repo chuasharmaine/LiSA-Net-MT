@@ -185,7 +185,7 @@ def main():
     print("Complete the initialization of model:{}, optimizer:{}, and lr_scheduler:{}".format(params["model_name"], params["optimizer_name"], params["lr_scheduler_name"]))
 
     # initialize the loss function
-    loss_function = losses.get_loss_function(params)
+    loss_functions = losses.get_loss_function(params)
     print("Complete the initialization of loss function")
 
     # initialize the metrics

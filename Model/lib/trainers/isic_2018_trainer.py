@@ -35,6 +35,8 @@ class ISIC2018Trainer:
         self.device = opt["device"]
         self.seg_classes = opt.get("seg_classes", 1)
         self.cls_classes = opt.get("cls_classes", 2)
+        self.best_metric_seg = 0.0
+        self.best_metric_cls = 0.0
         if self.cls_classes is None:
             self.cls_classes = 2
 
@@ -208,18 +210,16 @@ class ISIC2018Trainer:
 
         for batch_idx, batch in enumerate(self.train_data_loader):
 
+            input_tensor = seg_target = cls_target = None
             if len(batch) == 3:
                 input_tensor, seg_target, cls_target = batch
             elif len(batch) == 2:
                 if self.opt["segmentation"]:
                     input_tensor, seg_target = batch
-                    cls_target = None
                 else:
                     input_tensor, cls_target = batch
-                    seg_target = None
             elif len(batch) == 1:
                 input_tensor = batch[0]
-                seg_target = cls_target = None
 
             input_tensor = input_tensor.to(self.device)
             if seg_target is not None:
@@ -250,13 +250,13 @@ class ISIC2018Trainer:
             seg_loss_value = None
             cls_loss_value = None
 
-            if seg_out is not None and seg_target is not None:
+            if seg_out is not None and seg_target is not None and "segmentation" in self.loss_function:
                 seg_target = seg_target.long()
-                seg_loss = self.loss_function(seg_out, seg_target)
+                seg_loss = self.loss_function["segmentation"](seg_out, seg_target)
                 seg_loss_value = seg_loss.item()
                 total_loss = seg_loss if total_loss is None else total_loss + seg_loss
 
-            if cls_out is not None and cls_target is not None:
+            if cls_out is not None and cls_target is not None and "classification" in self.loss_function:
                 cls_target_idx = cls_target.argmax(dim=1) if (cls_target.ndim > 1 and cls_target.shape[1] > 1) else cls_target.long()
 
                 if self.seg_guided_cls and seg_out is not None:
@@ -264,23 +264,14 @@ class ISIC2018Trainer:
                     if cls_out.ndim > 1 and seg_feat.shape[1] == cls_out.shape[1]:
                         cls_out = cls_out + 0.1 * seg_feat
 
-                cls_loss = self.cls_loss_function(cls_out, cls_target_idx)
+                cls_loss = self.loss_function["classification"](cls_out, cls_target_idx)
                 cls_loss_value = cls_loss.item()
                 total_loss = cls_loss if total_loss is None else total_loss + cls_loss
 
-                if cls_loss_value is not None:
-                    self.statistics_dict["train"]["cls_loss"] += cls_loss_value * len(input_tensor)
-
-                self.calculate_metric_and_update_statistcs(
-                    cls_out.cpu(),
-                    cls_target_idx.cpu(),
-                    len(input_tensor),
-                    loss=total_loss.cpu() if (total_loss is not None and (seg_out is None or seg_target is None)) else None,
-                    mode="train"
-                )
-
             if seg_loss_value is not None:
                 self.statistics_dict["train"]["seg_loss"] += seg_loss_value * len(input_tensor)
+            if cls_loss_value is not None:
+                self.statistics_dict["train"]["cls_loss"] += cls_loss_value * len(input_tensor)
 
             # only backward if total_loss is a tensor
             if total_loss is not None:
@@ -297,6 +288,15 @@ class ISIC2018Trainer:
                     seg_target.cpu(),
                     len(input_tensor),
                     loss=total_loss.cpu() if total_loss is not None else None,
+                    mode="train"
+                )
+
+            if cls_out is not None and cls_target is not None:
+                self.calculate_metric_and_update_statistcs(
+                    cls_out.cpu(),
+                    cls_target_idx.cpu(),
+                    len(input_tensor),
+                    loss=total_loss.cpu() if total_loss is not None and (seg_out is None or seg_target is None) else None,
                     mode="train"
                 )
 
@@ -387,19 +387,19 @@ class ISIC2018Trainer:
             cur_JI = self.statistics_dict["valid"]["JI_sum"] / valid_count if valid_count > 0 else 0.0
             cur_AUC = self.statistics_dict["valid"]["AUC_ROC"]["avg"] / max(1, valid_count)
 
-            if cur_AUC > self.best_metric:
-                self.best_metric = cur_AUC
+            if cur_AUC > self.best_metric_cls:
+                self.best_metric_cls = cur_AUC
                 if not self.opt["optimize_params"]:
-                    self.save(epoch, cur_AUC, self.best_metric, type="best")
+                    self.save(epoch, cur_AUC, self.best_metric_cls, type="best")
 
             if (not self.opt["optimize_params"]) and (epoch + 1) % self.save_epoch_freq == 0:
-                self.save(epoch, cur_JI, self.best_metric, type="normal")
+                self.save(epoch, cur_JI, self.best_metric_seg, type="normal")
             if not self.opt["optimize_params"]:
-                self.save(epoch, cur_JI, self.best_metric, type="latest")
-            if cur_JI > self.best_metric:
-                self.best_metric = cur_JI
+                self.save(epoch, cur_JI, self.best_metric_seg, type="latest")
+            if cur_JI > self.best_metric_seg:
+                self.best_metric_seg = cur_JI
                 if not self.opt["optimize_params"]:
-                    self.save(epoch, cur_JI, self.best_metric, type="best")
+                    self.save(epoch, cur_JI, self.best_metric_seg, type="best")
 
     def calculate_metric_and_update_statistcs(self, output, target, cur_batch_size, loss=None, mode="train"):
         # check which task
