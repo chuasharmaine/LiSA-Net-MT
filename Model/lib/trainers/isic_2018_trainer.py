@@ -12,6 +12,7 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
+import copy
 
 from lib import utils
 from lib.metrics.ISIC2018 import ACCSEG, ACCCLS
@@ -32,6 +33,8 @@ class ISIC2018Trainer:
         self.lr_scheduler = lr_scheduler
         self.loss_function = loss_function
         self.metric = metric
+        self.metric_train = copy.deepcopy(self.metric)
+        self.metric_valid = copy.deepcopy(self.metric) 
         self.best_metric_seg = 0.0
         self.best_metric_cls = 0.0
         self.device = opt["device"]
@@ -118,10 +121,10 @@ class ISIC2018Trainer:
             train_JI = self.statistics_dict["train"].get("JI_sum", 0.0) / max(1, self.statistics_dict["train"]["count"])
             valid_JI = self.statistics_dict["valid"].get("JI_sum", 0.0) / max(1, self.statistics_dict["valid"]["count"])
 
-            train_F1 = self.metric["F1_MACRO"].compute() if "F1_MACRO" in self.metric else 0.0
-            valid_F1 = self.metric["F1_MACRO"].compute() if "F1_MACRO" in self.metric else 0.0
+            train_F1 = self.metric_train["F1_MACRO"].compute() if "F1_MACRO" in self.metric_train else 0.0
+            valid_F1 = self.metric_valid["F1_MACRO"].compute() if "F1_MACRO" in self.metric_valid else 0.0
 
-            valid_AUC = self.metric["AUC_ROC"].compute() if "AUC_ROC" in self.metric else 0.0
+            valid_AUC = self.metric_valid["AUC_ROC"].compute() if "AUC_ROC" in self.metric_valid else 0.0
 
             seg_loss = self.statistics_dict["train"].get("seg_loss", 0.0) / max(1, self.statistics_dict["train"]["count"])
             cls_loss = self.statistics_dict["train"].get("cls_loss", 0.0) / max(1, self.statistics_dict["train"]["count"])
@@ -261,6 +264,9 @@ class ISIC2018Trainer:
             if cls_out is not None and cls_target is not None and "classification" in self.loss_function:
                 cls_target_idx = cls_target.long()
 
+                cls_prob = torch.softmax(cls_out, dim=1)
+                self.metric_train["F1_MACRO"].update(cls_prob.cpu(), cls_target_idx.cpu())
+
                 if self.seg_guided_cls and seg_out is not None:
                     seg_feat = torch.mean(seg_out, dim=(2,3))
                     if cls_out.ndim > 1 and seg_feat.shape[1] == cls_out.shape[1]:
@@ -309,10 +315,10 @@ class ISIC2018Trainer:
 
         self.model.eval()
 
-        if "AUC_ROC" in self.metric:
-            self.metric["AUC_ROC"].reset()
-        if "F1_MACRO" in self.metric:
-            self.metric["F1_MACRO"].reset()
+        if "AUC_ROC" in self.metric_valid:
+            self.metric_valid["AUC_ROC"].reset()
+        if "F1_MACRO" in self.metric_valid:
+            self.metric_valid["F1_MACRO"].reset()
 
         with torch.no_grad():
 
@@ -371,8 +377,8 @@ class ISIC2018Trainer:
 
                     cls_prob = torch.softmax(cls_out, dim=1)
 
-                    self.metric["AUC_ROC"].update(cls_prob.cpu(), cls_target_idx.cpu())
-                    self.metric["F1_MACRO"].update(cls_out.cpu(), cls_target_idx.cpu())
+                    self.metric_valid["AUC_ROC"].update(cls_prob.cpu(), cls_target_idx.cpu())
+                    self.metric_valid["F1_MACRO"].update(cls_prob.cpu(), cls_target_idx.cpu())
 
                     self.calculate_metric_and_update_statistcs(
                         cls_prob.cpu(),
@@ -383,7 +389,7 @@ class ISIC2018Trainer:
                     )
             valid_count = self.statistics_dict["valid"]["count"]
             cur_JI = self.statistics_dict["valid"]["JI_sum"] / valid_count if valid_count > 0 else 0.0
-            cur_AUC = self.metric["AUC_ROC"].compute()
+            cur_AUC = self.metric_valid["AUC_ROC"].compute()
 
             if cur_AUC > self.best_metric_cls and not self.opt["optimize_params"]:
                 self.best_metric_cls = cur_AUC
