@@ -119,7 +119,7 @@ class ISIC2018Trainer:
             valid_JI = self.statistics_dict["valid"].get("JI_sum", 0.0) / max(1, self.statistics_dict["valid"]["count"])
 
             train_F1 = self.statistics_dict["train"].get("F1_MACRO", {}).get("avg", 0.0) / max(1, self.statistics_dict["train"]["count"])
-            valid_F1 = self.statistics_dict["valid"].get("F1_MACRO", {}).get("avg", 0.0) / max(1, self.statistics_dict["valid"]["count"])
+            valid_F1 = self.metric["F1_MACRO"].compute() if "F1_MACRO" in self.metric else 0.0
 
             valid_AUC = self.metric["AUC_ROC"].compute() if "AUC_ROC" in self.metric else 0.0
 
@@ -311,6 +311,8 @@ class ISIC2018Trainer:
 
         if "AUC_ROC" in self.metric:
             self.metric["AUC_ROC"].reset()
+        if "F1_MACRO" in self.metric:
+            self.metric["F1_MACRO"].reset()
 
         with torch.no_grad():
 
@@ -370,6 +372,7 @@ class ISIC2018Trainer:
                     cls_prob = torch.softmax(cls_out, dim=1)
 
                     self.metric["AUC_ROC"].update(cls_prob.cpu(), cls_target_idx.cpu())
+                    self.metric["F1_MACRO"].update(cls_out.cpu(), cls_target_idx.cpu())
 
                     self.calculate_metric_and_update_statistcs(
                         cls_prob.cpu(),
@@ -441,8 +444,7 @@ class ISIC2018Trainer:
             elif metric_name == "ACC_CLS":
                 self.statistics_dict[mode]["ACC_cls_sum"] += metric_func(output, target) * cur_batch_size
             elif metric_name == "F1_MACRO":
-                batch_f1 = metric_func(output, target)
-                self.statistics_dict[mode]["F1_MACRO"]["avg"] += batch_f1 * cur_batch_size
+                continue
             elif metric_name == "AUC_ROC":
                 continue
             else:
