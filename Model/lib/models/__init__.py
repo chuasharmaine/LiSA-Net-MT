@@ -49,7 +49,7 @@ from .PMFSNet import PMFSNet
 from .LiSANet import LiSANet
 from .LiSANetMT import LiSANetMT
 from .EGEUNet import EGEUNet
-from .EAACNet import EAACNet
+from .BreastCancerMT import BreastCancerMT
 from .MBDCNN import MBDCNN
 from .ResNet50 import ResNet50
 from .DenseNet121 import DenseNet121
@@ -203,14 +203,11 @@ def get_model_optimizer_lr_scheduler(opt):
         elif opt["model_name"] == "UNet":
             model = UNet(n_channels=opt["in_channels"], n_classes=opt["seg_classes"])
 
-        elif opt["model_name"] == "EGEUNet":
-            model = EGEUNet(input_channels=opt["in_channels"], num_classes=2)
-
-        elif opt["model_name"] == "EAACNet":
-            model = EAACNet(
+        elif opt["model_name"] == "BreastCancerMT":
+            model = BreastCancerMT(
                 in_channels=opt["in_channels"],
-                seg_out_channels=opt["seg_classes"] if opt["seg_classes"] is not None else 2,
-                cls_out_channels=opt["cls_classes"] if opt["cls_classes"] is not None else 7
+                seg_out_channels=opt["seg_classes"],
+                cls_out_channels=opt["cls_classes"]
             )
 
         elif opt["model_name"] == "MBDCNN":
@@ -477,11 +474,11 @@ def get_model(opt):
         elif opt["model_name"] == "EGEUNet":
             model = EGEUNet(input_channels=opt["in_channels"], num_classes=2)
 
-        elif opt["model_name"] == "EAACNet":
-            model = EAACNet(
+        elif opt["model_name"] == "BreastCancerMT":
+            model = BreastCancerMT(
                 in_channels=opt["in_channels"],
-                seg_out_channels=opt["seg_classes"] if opt["seg_classes"] is not None else 2,
-                cls_out_channels=opt["cls_classes"] if opt["cls_classes"] is not None else 7
+                seg_out_channels=opt["seg_classes"],
+                cls_out_channels=opt["cls_classes"]
             )
 
         elif opt["model_name"] == "MBDCNN":

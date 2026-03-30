@@ -47,13 +47,20 @@ class ISIC2018Tester:
             image = image.to(self.device)
             output = self.model(image)
 
-        seg_out, cls_out = None, None
-        if self.opt["segmentation"] and self.opt["classification"]:
-            seg_out, cls_out = output
-        elif self.opt["segmentation"]:
-            seg_out = output
-        elif self.opt["classification"]:
-            cls_out = output
+
+        if isinstance(output, dict):
+            seg_out = output.get("segmentation") if self.opt.get("segmentation") else None
+            cls_out = output.get("classification") if self.opt.get("classification") else None
+        elif isinstance(output, tuple):
+            if self.opt.get("segmentation") and len(output) > 0:
+                seg_out = output[0]
+            if self.opt.get("classification") and len(output) > 1:
+                cls_out = output[1]
+        else:
+            if self.opt.get("segmentation"):
+                seg_out = output
+            elif self.opt.get("classification"):
+                cls_out = output
 
         # Segmentation output
         if seg_out is not None and output_path is not None:
@@ -101,12 +108,19 @@ class ISIC2018Tester:
                 output = self.model(input_tensor)
 
                 seg_out, cls_out = None, None
-                if self.opt["segmentation"] and self.opt["classification"]:
-                    seg_out, cls_out = output
-                elif self.opt["segmentation"]:
-                    seg_out = output
-                elif self.opt["classification"]:
-                    cls_out = output
+                if isinstance(output, dict):
+                    seg_out = output.get("segmentation") if self.opt.get("segmentation") else None
+                    cls_out = output.get("classification") if self.opt.get("classification") else None
+                elif isinstance(output, tuple):
+                    if self.opt.get("segmentation") and len(output) > 0:
+                        seg_out = output[0]
+                    if self.opt.get("classification") and len(output) > 1:
+                        cls_out = output[1]
+                else:
+                    if self.opt.get("segmentation"):
+                        seg_out = output
+                    elif self.opt.get("classification"):
+                        cls_out = output
 
                 if seg_out is not None:
                     self.calculate_metric_and_update_statistcs(
