@@ -81,7 +81,7 @@ def get_metric(opt):
                 metrics[metric_name] = ISIC2018.AUC_ROC(num_classes=num_classes)
 
             elif metric_name == "F1_MACRO":
-                metrics[metric_name] = ISIC2018.F1_MACRO(num_classes=num_classes, sigmoid_normalization=opt["sigmoid_normalization"])
+                metrics[metric_name] = ISIC2018.F1_MACRO()
 
             else:
                 raise RuntimeError(f"No {metric_name} metric available on {opt['dataset_name']} dataset")
