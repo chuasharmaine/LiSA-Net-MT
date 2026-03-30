@@ -32,13 +32,13 @@ class ISIC2018Trainer:
         self.lr_scheduler = lr_scheduler
         self.loss_function = loss_function
         self.metric = metric
+        self.best_metric_seg = 0.0
+        self.best_metric_cls = 0.0
         self.device = opt["device"]
         self.seg_classes = opt.get("seg_classes", 1)
         self.cls_classes = opt.get("cls_classes", 7)
-        self.best_metric_seg = 0.0
-        self.best_metric_cls = 0.0
         if self.cls_classes is None:
-            self.cls_classes = 2
+            self.cls_classes = len(set([self.train_data_loader.dataset[i][1] for i in range(len(self.train_data_loader.dataset))]))
 
         self.seg_guided_cls = opt.get("seg_guided_cls", False)
 
@@ -58,13 +58,7 @@ class ISIC2018Trainer:
 
         # Classification metrics
         if self.opt["classification"]:
-            cls_weights = self.opt.get("cls_weights", None)
-            if cls_weights is not None:
-                cls_weights = torch.tensor(cls_weights, dtype=torch.float).to(self.device)
-                if len(cls_weights) != self.cls_classes:
-                    print(f"WARNING: cls_weights length {len(cls_weights)} does not match cls_classes {self.cls_classes}. Ignoring weights.")
-                    cls_weights = None
-            self.cls_loss_function = nn.CrossEntropyLoss(weight=cls_weights)
+            self.cls_loss_function = nn.CrossEntropyLoss()
             if "ACC_CLS" in self.opt["metric_names"]:
                 self.metric["ACC_CLS"] = ACCCLS()
             if "F1_MACRO" in self.opt["metric_names"]:
@@ -270,7 +264,7 @@ class ISIC2018Trainer:
                     if cls_out.ndim > 1 and seg_feat.shape[1] == cls_out.shape[1]:
                         cls_out = cls_out + 0.1 * seg_feat
 
-                cls_loss = self.loss_function["classification"](cls_out, cls_target_idx)
+                cls_loss = self.cls_loss_function(cls_out, cls_target_idx)
                 cls_loss_value = cls_loss.item()
                 total_loss = cls_loss if total_loss is None else total_loss + cls_loss
 
@@ -366,11 +360,6 @@ class ISIC2018Trainer:
                     )
 
                 if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
-
-                    print("DEBUG num_classes (metric):", self.metric["AUC_ROC"].num_classes)
-                    print("DEBUG cls_out shape:", cls_out.shape)
-                    print("DEBUG target unique:", torch.unique(cls_target))
-
                     if cls_target.ndim > 1 and cls_target.shape[1] > 1:
                         cls_target_idx = cls_target.argmax(dim=1)
                     else:

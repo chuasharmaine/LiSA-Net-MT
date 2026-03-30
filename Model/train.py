@@ -193,7 +193,7 @@ def main():
     print("Complete the initialization of metrics")
 
     # initialize the trainer
-    trainer = trainers.get_trainer(params, train_loader, valid_loader, model, optimizer, lr_scheduler, loss_function, metric)
+    trainer = trainers.get_trainer(params, train_loader, valid_loader, model, optimizer, lr_scheduler, loss_functions, metric)
 
     # resume or load pretrained weights
     if (params["resume"] is not None) or (params["pretrain"] is not None):
