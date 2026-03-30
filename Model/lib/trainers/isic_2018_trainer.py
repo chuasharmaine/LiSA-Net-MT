@@ -40,6 +40,7 @@ class ISIC2018Trainer:
         if self.cls_classes is None:
             self.cls_classes = len(set([self.train_data_loader.dataset[i][1] for i in range(len(self.train_data_loader.dataset))]))
 
+        self.seg_guided_cls = False
         self.seg_guided_cls = opt.get("seg_guided_cls", False)
 
         # Segmentation metrics
@@ -58,7 +59,7 @@ class ISIC2018Trainer:
 
         # Classification metrics
         if self.opt["classification"]:
-            self.cls_loss_function = nn.CrossEntropyLoss()
+            self.cls_loss_function = self.loss_function["classification"]
             if "ACC_CLS" in self.opt["metric_names"]:
                 self.metric["ACC_CLS"] = ACCCLS()
             if "F1_MACRO" in self.opt["metric_names"]:
@@ -120,8 +121,7 @@ class ISIC2018Trainer:
             train_F1 = self.statistics_dict["train"].get("F1_MACRO", {}).get("avg", 0.0) / max(1, self.statistics_dict["train"]["count"])
             valid_F1 = self.statistics_dict["valid"].get("F1_MACRO", {}).get("avg", 0.0) / max(1, self.statistics_dict["valid"]["count"])
 
-            train_AUC = self.statistics_dict["train"].get("AUC_ROC", {}).get("avg", 0.0) / max(1, self.statistics_dict["train"]["count"])
-            valid_AUC = self.statistics_dict["valid"].get("AUC_ROC", {}).get("avg", 0.0) / max(1, self.statistics_dict["valid"]["count"])
+            valid_AUC = self.metric["AUC_ROC"].compute() if "AUC_ROC" in self.metric else 0.0
 
             seg_loss = self.statistics_dict["train"].get("seg_loss", 0.0) / max(1, self.statistics_dict["train"]["count"])
             cls_loss = self.statistics_dict["train"].get("cls_loss", 0.0) / max(1, self.statistics_dict["train"]["count"])
@@ -144,7 +144,6 @@ class ISIC2018Trainer:
                     seg_loss,
                     cls_loss,
                     train_F1,
-                    train_AUC,
                     train_JI,
                     valid_DSC,
                     valid_mean_IoU,
@@ -156,7 +155,7 @@ class ISIC2018Trainer:
                     self.best_metric
                 ]
 
-                log_fmt = "[{}]  epoch:[{:05d}/{:05d}]  lr:{:.6f}  total_loss:{:.6f}  seg_loss:{:.6f}  cls_loss:{:.6f}  train_ACC_seg:{:.6f}  train_DSC:{:.6f}  train_IoU:{:.6f}  train_ACC_cls:{:.6f}  train_F1:{:.6f}  train_AUC:{:.6f}  train_JI:{:.6f}  valid_ACC_seg:{:.6f}  valid_DSC:{:.6f}  valid_IoU:{:.6f}  valid_ACC_cls:{:.6f}  valid_F1:{:.6f}  valid_AUC:{:.6f}  valid_JI:{:.6f}  best_JI:{:.6f}"
+                log_fmt = "[{}]  epoch:[{:05d}/{:05d}]  lr:{:.6f}  total_loss:{:.6f}  seg_loss:{:.6f}  cls_loss:{:.6f}  train_ACC_seg:{:.6f}  train_DSC:{:.6f}  train_IoU:{:.6f}  train_ACC_cls:{:.6f}  train_F1:{:.6f}  train_JI:{:.6f}  valid_ACC_seg:{:.6f}  valid_DSC:{:.6f}  valid_IoU:{:.6f}  valid_ACC_cls:{:.6f}  valid_F1:{:.6f}  valid_AUC:{:.6f}  valid_JI:{:.6f}  best_JI:{:.6f}"
 
             elif self.opt["classification"]:
                 log_items = [
@@ -166,14 +165,13 @@ class ISIC2018Trainer:
                     self.statistics_dict["train"]["loss"] / self.statistics_dict["train"]["count"],
                     train_ACC_cls,
                     train_F1,
-                    train_AUC,
                     valid_ACC_cls,
                     valid_F1,
                     valid_AUC,
                     self.best_metric
                 ]
 
-                log_fmt = "[{}]  epoch:[{:05d}/{:05d}]  lr:{:.6f}  train_loss:{:.6f}  train_ACC_cls:{:.6f}  train_F1:{:.6f}  train_AUC:{:.6f}  valid_ACC_cls:{:.6f}  valid_F1:{:.6f}  valid_AUC:{:.6f}  best_metric:{:.6f}"
+                log_fmt = "[{}]  epoch:[{:05d}/{:05d}]  lr:{:.6f}  train_loss:{:.6f}  train_ACC_cls:{:.6f}  train_F1:{:.6f}  valid_ACC_cls:{:.6f}  valid_F1:{:.6f}  valid_AUC:{:.6f}  best_metric:{:.6f}"
             else:
                 log_items = [
                     datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -257,7 +255,7 @@ class ISIC2018Trainer:
                 total_loss = seg_loss if total_loss is None else total_loss + seg_loss
 
             if cls_out is not None and cls_target is not None and "classification" in self.loss_function:
-                cls_target_idx = cls_target.argmax(dim=1) if (cls_target.ndim > 1 and cls_target.shape[1] > 1) else cls_target.long()
+                cls_target_idx = cls_target.long()
 
                 if self.seg_guided_cls and seg_out is not None:
                     seg_feat = torch.mean(seg_out, dim=(2,3))
@@ -306,6 +304,9 @@ class ISIC2018Trainer:
     def valid_epoch(self, epoch):
 
         self.model.eval()
+
+        if "AUC_ROC" in self.metric:
+            self.metric["AUC_ROC"].reset()
 
         with torch.no_grad():
 
@@ -360,16 +361,11 @@ class ISIC2018Trainer:
                     )
 
                 if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
-                    if cls_target.ndim > 1 and cls_target.shape[1] > 1:
-                        cls_target_idx = cls_target.argmax(dim=1)
-                    else:
-                        cls_target_idx = cls_target.long()
+                    cls_target_idx = cls_target.long()
 
-                    cls_prob = torch.softmax(cls_out, dim=1) if cls_out.ndim > 1 and cls_out.shape[1] > 1 else torch.sigmoid(cls_out)
+                    cls_prob = torch.softmax(cls_out, dim=1)
 
-                    batch_auc = self.metric["AUC_ROC"](cls_prob.cpu(), cls_target_idx.cpu())
-
-                    self.statistics_dict["valid"]["AUC_ROC"]["avg"] += batch_auc * len(input_tensor)
+                    self.metric["AUC_ROC"].update(cls_prob.cpu(), cls_target_idx.cpu())
 
                     self.calculate_metric_and_update_statistcs(
                         cls_prob.cpu(),
@@ -380,7 +376,7 @@ class ISIC2018Trainer:
                     )
             valid_count = self.statistics_dict["valid"]["count"]
             cur_JI = self.statistics_dict["valid"]["JI_sum"] / valid_count if valid_count > 0 else 0.0
-            cur_AUC = self.statistics_dict["valid"]["AUC_ROC"]["avg"] / max(1, valid_count)
+            cur_AUC = self.metric["AUC_ROC"].compute()
 
             if cur_AUC > self.best_metric_cls:
                 self.best_metric_cls = cur_AUC
@@ -451,8 +447,7 @@ class ISIC2018Trainer:
                 batch_f1 = metric_func(output, target)
                 self.statistics_dict[mode]["F1_MACRO"]["avg"] += batch_f1 * cur_batch_size
             elif metric_name == "AUC_ROC":
-                batch_auc = metric_func(output, target)
-                self.statistics_dict[mode]["AUC_ROC"]["avg"] += batch_auc
+                continue
             else:
                 per_class_metric = metric_func(output, target)
 

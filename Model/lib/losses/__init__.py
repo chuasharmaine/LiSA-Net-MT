@@ -35,7 +35,6 @@ def get_loss_function(opt):
         num_classes = len(train_counts)
         cls_weights = [total_count / (num_classes * c) for c in train_counts]  
         cls_weight_tensor = torch.tensor(cls_weights, dtype=torch.float).to(device)
-        cls_weight_tensor = cls_weight_tensor / cls_weight_tensor.sum() 
         loss_functions["classification"] = CrossEntropyLoss(weight=cls_weight_tensor)
 
     if not loss_functions:

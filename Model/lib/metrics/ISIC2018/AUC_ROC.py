@@ -7,44 +7,54 @@ from lib.utils import *
 
 
 class AUC_ROC(object):
-   def __init__(self, num_classes=7):
+    def __init__(self, num_classes=7):
        """
        Multi-class AUC-ROC metric calculator.
        Args:
            num_classes: number of classes
        """
        self.num_classes = num_classes
+       self.reset()
 
-   def __call__(self, input, target):
-       """
-       Args:
-           input: model output, shape (B, C, H, W) or (B, C)
-           target: ground truth, shape (B, H, W) or (B) or one-hot (B, C)
-       Returns:
-           AUC-ROC score
-       """
+    def reset(self):
+        """
+        Clears stored predictions and targets.
 
-       # If segmentation output (B, C, H, W)
-       if input.dim() > 2:
-           # reshape to (N_pixels, C)
-           input = input.permute(0, 2, 3, 1).contiguous()
-           input = input.view(-1, self.num_classes)
-           target = target.view(-1)
+        Call this at the START of each epoch.
+        """
+        self.all_probs = []
+        self.all_targets = []
 
-       else:
-           # classification output (B, C)
-           # convert one-hot to class indices if needed
-           if target.ndim > 1 and target.shape[1] > 1:
-               target = target.argmax(dim=1)
-           else:
-               target = target.view(-1)
+    def update(self, input, target):
+        """
+        Stores predictions and targets for the current batch.
+        """
+        
+        # Ensure classification output
+        if input.ndim != 2:
+            return
 
-       # apply softmax for multi-class probabilities
-       probs = torch.softmax(input, dim=1)
-       input_np = probs.detach().cpu().numpy()
-       target_np = target.detach().cpu().numpy()
+        # Convert one-hot labels to class indices
+        if target.ndim > 1 and target.shape[1] > 1:
+            target = target.argmax(dim=1)
 
-       try:
-           return roc_auc_score(target_np, input_np, multi_class='ovr')
-       except ValueError:
-           return 0.5
+        self.all_probs.append(input.detach().cpu())
+        self.all_targets.append(target.detach().cpu())
+
+    def compute(self):
+        """
+        Computes final AUC using ALL accumulated data.
+
+        Returns:
+            Multi-class AUC-ROC score (one-vs-rest)
+        """
+
+        # Concatenate all batches into full dataset tensors
+        probs = torch.cat(self.all_probs).numpy()
+        targets = torch.cat(self.all_targets).numpy()
+
+        try:
+            return roc_auc_score(targets, probs, multi_class='ovr')
+
+        except ValueError:
+            return 0.5
