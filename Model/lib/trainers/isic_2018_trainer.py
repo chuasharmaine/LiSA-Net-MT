@@ -118,7 +118,7 @@ class ISIC2018Trainer:
             train_JI = self.statistics_dict["train"].get("JI_sum", 0.0) / max(1, self.statistics_dict["train"]["count"])
             valid_JI = self.statistics_dict["valid"].get("JI_sum", 0.0) / max(1, self.statistics_dict["valid"]["count"])
 
-            train_F1 = self.statistics_dict["train"].get("F1_MACRO", {}).get("avg", 0.0) / max(1, self.statistics_dict["train"]["count"])
+            train_F1 = self.metric["F1_MACRO"].compute() if "F1_MACRO" in self.metric else 0.0
             valid_F1 = self.metric["F1_MACRO"].compute() if "F1_MACRO" in self.metric else 0.0
 
             valid_AUC = self.metric["AUC_ROC"].compute() if "AUC_ROC" in self.metric else 0.0
