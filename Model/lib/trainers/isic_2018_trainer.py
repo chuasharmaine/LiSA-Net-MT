@@ -131,6 +131,9 @@ class ISIC2018Trainer:
             else:
                 self.lr_scheduler.step()
 
+            best_JI = self.best_metric_seg
+            best_AUC = self.best_metric_cls
+
             if self.opt["segmentation"] and self.opt["classification"]:
                 log_items = [
                     datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -152,10 +155,11 @@ class ISIC2018Trainer:
                     valid_JI,
                     valid_F1,
                     valid_AUC,
-                    self.best_metric
+                    best_JI,
+                    best_AUC
                 ]
 
-                log_fmt = "[{}]  epoch:[{:05d}/{:05d}]  lr:{:.6f}  total_loss:{:.6f}  seg_loss:{:.6f}  cls_loss:{:.6f}  train_ACC_seg:{:.6f}  train_DSC:{:.6f}  train_IoU:{:.6f}  train_ACC_cls:{:.6f}  train_F1:{:.6f}  train_JI:{:.6f}  valid_ACC_seg:{:.6f}  valid_DSC:{:.6f}  valid_IoU:{:.6f}  valid_ACC_cls:{:.6f}  valid_F1:{:.6f}  valid_AUC:{:.6f}  valid_JI:{:.6f}  best_JI:{:.6f}"
+                log_fmt = "[{}]  epoch:[{:05d}/{:05d}]  lr:{:.6f}  total_loss:{:.6f}  seg_loss:{:.6f}  cls_loss:{:.6f}  train_ACC_seg:{:.6f}  train_DSC:{:.6f}  train_IoU:{:.6f}  train_ACC_cls:{:.6f}  train_F1:{:.6f}  train_JI:{:.6f}  valid_ACC_seg:{:.6f}  valid_DSC:{:.6f}  valid_IoU:{:.6f}  valid_ACC_cls:{:.6f}  valid_F1:{:.6f}  valid_AUC:{:.6f}  valid_JI:{:.6f}  best_JI:{:.6f} best_AUC:{:.6f}"
 
             elif self.opt["classification"]:
                 log_items = [
@@ -168,10 +172,10 @@ class ISIC2018Trainer:
                     valid_ACC_cls,
                     valid_F1,
                     valid_AUC,
-                    self.best_metric
+                    best_AUC
                 ]
 
-                log_fmt = "[{}]  epoch:[{:05d}/{:05d}]  lr:{:.6f}  train_loss:{:.6f}  train_ACC_cls:{:.6f}  train_F1:{:.6f}  valid_ACC_cls:{:.6f}  valid_F1:{:.6f}  valid_AUC:{:.6f}  best_metric:{:.6f}"
+                log_fmt = "[{}]  epoch:[{:05d}/{:05d}]  lr:{:.6f}  train_loss:{:.6f}  train_ACC_cls:{:.6f}  train_F1:{:.6f}  valid_ACC_cls:{:.6f}  valid_F1:{:.6f}  valid_AUC:{:.6f}  best_AUC:{:.6f}"
             else:
                 log_items = [
                     datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -186,10 +190,10 @@ class ISIC2018Trainer:
                     valid_mean_IoU,
                     valid_ACC_seg,
                     valid_JI,
-                    self.best_metric
+                    best_JI
                 ]
 
-                log_fmt = "[{}]  epoch:[{:05d}/{:05d}]  lr:{:.6f}  train_loss:{:.6f}  train_ACC_seg:{:.6f}  train_DSC:{:.6f}  train_IoU:{:.6f}  train_JI:{:.6f}  valid_ACC_seg:{:.6f} valid_DSC:{:.6f}  valid_IoU:{:.6f}   valid_JI:{:.6f}  best_JI:{:.6f}  best_metric:{:.6f}"
+                log_fmt = "[{}]  epoch:[{:05d}/{:05d}]  lr:{:.6f}  train_loss:{:.6f}  train_ACC_seg:{:.6f}  train_DSC:{:.6f}  train_IoU:{:.6f}  train_JI:{:.6f}  valid_ACC_seg:{:.6f} valid_DSC:{:.6f}  valid_IoU:{:.6f}   valid_JI:{:.6f}  best_JI:{:.6f}"
             
             log_str = log_fmt.format(*log_items)
             print(log_str)
@@ -200,7 +204,7 @@ class ISIC2018Trainer:
                 nni.report_intermediate_result(valid_JI)
 
         if self.opt["optimize_params"]:
-            nni.report_final_result(self.best_metric)
+            nni.report_final_result(self.best_metric_cls if self.opt["classification"] else self.best_metric_seg)
 
     def train_epoch(self, epoch):
 
@@ -378,19 +382,12 @@ class ISIC2018Trainer:
             cur_JI = self.statistics_dict["valid"]["JI_sum"] / valid_count if valid_count > 0 else 0.0
             cur_AUC = self.metric["AUC_ROC"].compute()
 
-            if cur_AUC > self.best_metric_cls:
+            if cur_AUC > self.best_metric_cls and not self.opt["optimize_params"]:
                 self.best_metric_cls = cur_AUC
-                if not self.opt["optimize_params"]:
-                    self.save(epoch, cur_AUC, self.best_metric_cls, type="best")
-
-            if (not self.opt["optimize_params"]) and (epoch + 1) % self.save_epoch_freq == 0:
-                self.save(epoch, cur_JI, self.best_metric_seg, type="normal")
-            if not self.opt["optimize_params"]:
-                self.save(epoch, cur_JI, self.best_metric_seg, type="latest")
-            if cur_JI > self.best_metric_seg:
+                self.save(epoch, cur_AUC, self.best_metric_cls, type="best_cls")
+            if cur_JI > self.best_metric_seg and not self.opt["optimize_params"]:
                 self.best_metric_seg = cur_JI
-                if not self.opt["optimize_params"]:
-                    self.save(epoch, cur_JI, self.best_metric_seg, type="best")
+                self.save(epoch, cur_JI, self.best_metric_seg, type="best_seg")
 
     def calculate_metric_and_update_statistcs(self, output, target, cur_batch_size, loss=None, mode="train"):
         # check which task
