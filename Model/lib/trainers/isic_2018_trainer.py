@@ -97,6 +97,9 @@ class ISIC2018Trainer:
         for epoch in range(self.start_epoch, self.end_epoch):
             self.reset_statistics_dict()
 
+            if "F1_MACRO" in self.metric_train:
+                self.metric_train["F1_MACRO"].reset()
+                
             self.optimizer.zero_grad()
 
             self.train_epoch(epoch)
