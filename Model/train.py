@@ -58,7 +58,7 @@ params_ISIC_2018 = {
     "pretrain": None,
     # ——————————————————————————————————————————————    Optimizer     ——————————————————————————————————————————————————————
     "optimizer_name": "AdamW",
-    "learning_rate": 0.005,
+    "learning_rate": None,
     "weight_decay": 0.000001,
     "momentum": 0.9657205586290213,
     # ———————————————————————————————————————————    Learning Rate Scheduler     —————————————————————————————————————————————————————
@@ -66,9 +66,8 @@ params_ISIC_2018 = {
     "gamma": 0.9582311026945434,
     "step_size": 20,
     "milestones": [1, 3, 5, 7, 8, 9],
-    "T_max": 100,
-    "T_0": 5,
-    "T_mult": 5,
+    "T_0": 20,
+    "T_mult": 1,
     "mode": "max",
     "patience": 20,
     "factor": 0.3,
@@ -149,7 +148,7 @@ def main():
         params["metric_names"] = ["ACC_SEG", "DSC", "IoU", "JI"]
         params["seg_classes"] = 2 
         params["cls_classes"] = None 
-        params["lr_seg"] = 0.005 
+        params["lr_seg"] = 1e-4
         params["lr_cls"] = None 
 
     elif args.task == "classification":
@@ -159,7 +158,7 @@ def main():
         params["seg_classes"] = None 
         params["cls_classes"] = 7 
         params["lr_seg"] = None 
-        params["lr_cls"] = 0.0003 
+        params["lr_cls"] = 3e-5 
 
     elif args.task == "multitask":
         params["segmentation"] = True
@@ -168,8 +167,8 @@ def main():
         params["seg_classes"] = 2 
         params["cls_classes"] = 7 
         params["seg_guided_cls"] = True
-        params["lr_seg"] = 0.005 
-        params["lr_cls"] = 0.0003  
+        params["lr_cls"] = 3e-5
+        params["lr_seg"] = 1e-4
 
     if args.model == "EGEUNet" and params["segmentation"]:
         params["learning_rate"] = 0.001

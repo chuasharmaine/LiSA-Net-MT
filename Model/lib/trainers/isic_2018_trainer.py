@@ -99,8 +99,6 @@ class ISIC2018Trainer:
 
             if "F1_MACRO" in self.metric_train:
                 self.metric_train["F1_MACRO"].reset()
-                
-            self.optimizer.zero_grad()
 
             self.train_epoch(epoch)
 
@@ -264,20 +262,16 @@ class ISIC2018Trainer:
                 seg_loss_value = seg_loss.item()
                 total_loss = seg_loss if total_loss is None else total_loss + seg_loss
 
-            if cls_out is not None and cls_target is not None and "classification" in self.loss_function:
-                cls_target_idx = cls_target.long()
+            cls_target_idx = cls_target.long() if cls_target is not None else None
+
+            if cls_out is not None and cls_target_idx is not None and "classification" in self.loss_function:
+                cls_loss = self.cls_loss_function(cls_out, cls_target_idx)
 
                 cls_prob = torch.softmax(cls_out, dim=1)
-                self.metric_train["F1_MACRO"].update(cls_prob.cpu(), cls_target_idx.cpu())
+                self.metric_train["F1_MACRO"].update(cls_prob.detach(), cls_target_idx.detach())
 
-                if self.seg_guided_cls and seg_out is not None:
-                    seg_feat = torch.mean(seg_out, dim=(2,3))
-                    if cls_out.ndim > 1 and seg_feat.shape[1] == cls_out.shape[1]:
-                        cls_out = cls_out + 0.1 * seg_feat
-
-                cls_loss = self.cls_loss_function(cls_out, cls_target_idx)
                 cls_loss_value = cls_loss.item()
-                total_loss = cls_loss if total_loss is None else total_loss + cls_loss
+                total_loss = total_loss + cls_loss if total_loss is not None else cls_loss
 
             if seg_loss_value is not None:
                 self.statistics_dict["train"]["seg_loss"] += seg_loss_value * len(input_tensor)
@@ -295,19 +289,20 @@ class ISIC2018Trainer:
             # update metrics
             if seg_out is not None and seg_target is not None:
                 self.calculate_metric_and_update_statistcs(
-                    seg_out.cpu(),
-                    seg_target.cpu(),
+
+                    seg_out,
+                    seg_target,
                     len(input_tensor),
-                    loss=total_loss.cpu() if total_loss is not None else None,
+                    loss=total_loss.detach() if total_loss is not None else None,
                     mode="train"
                 )
 
             if cls_out is not None and cls_target is not None:
                 self.calculate_metric_and_update_statistcs(
-                    cls_out.cpu(),
-                    cls_target_idx.cpu(),
+                    cls_out,
+                    cls_target_idx,
                     len(input_tensor),
-                    loss=total_loss.cpu() if total_loss is not None and (seg_out is None or seg_target is None) else None,
+                    loss=total_loss.detach() if total_loss is not None and (seg_out is None or seg_target is None) else None,
                     mode="train"
                 )
 
@@ -381,7 +376,7 @@ class ISIC2018Trainer:
                     cls_prob = torch.softmax(cls_out, dim=1)
 
                     self.metric_valid["AUC_ROC"].update(cls_prob.cpu(), cls_target_idx.cpu())
-                    self.metric_valid["F1_MACRO"].update(cls_prob.cpu(), cls_target_idx.cpu())
+                    self.metric_valid["F1_MACRO"].update(cls_prob.detach().cpu(), cls_target_idx.detach().cpu())
 
                     self.calculate_metric_and_update_statistcs(
                         cls_prob.cpu(),

@@ -6,10 +6,10 @@
 @Version  :   1.0
 @License  :   (C)Copyright 2023
 """
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 
-# from .ToothDataset import ToothDataset
-# from .MMOTUDataset import MMOTUDataset
+from .ToothDataset import ToothDataset
+from .MMOTUDataset import MMOTUDataset
 from .ISIC2018Dataset import ISIC2018Dataset
 
 
@@ -38,7 +38,30 @@ def get_dataloader(opt):
         train_set = ISIC2018Dataset(opt, mode="train")
         valid_set = ISIC2018Dataset(opt, mode="valid")
 
-        train_loader = DataLoader(train_set, batch_size=opt["batch_size"], shuffle=True, num_workers=opt["num_workers"], pin_memory=True)
+        if opt.get("classification", False):
+            train_counts = [779, 4693, 360, 229, 769, 81, 99]  # MEL, NV, BCC, AKIEC, BKL, DF, VASC
+            class_weights = [1.0 / c for c in train_counts]
+
+            # Assign a weight to every sample based on its class label
+            sample_weights = []
+            for i in range(len(train_set)):
+                item = train_set[i]
+                label = item[-1]
+                if hasattr(label, 'item'):
+                    label = label.item()
+                sample_weights.append(class_weights[int(label)])
+
+            sampler = WeightedRandomSampler(
+                weights=torch.tensor(sample_weights, dtype=torch.float),
+                num_samples=len(sample_weights),
+                replacement=True
+            )
+
+            train_loader = DataLoader(train_set, batch_size=opt["batch_size"], sampler=sampler, num_workers=opt["num_workers"], pin_memory=True)
+
+        else:
+            train_loader = DataLoader(train_set, batch_size=opt["batch_size"], shuffle=True, num_workers=opt["num_workers"], pin_memory=True)
+        
         valid_loader = DataLoader(valid_set, batch_size=opt["batch_size"], shuffle=False, num_workers=opt["num_workers"], pin_memory=True)
 
     else:

@@ -30,13 +30,7 @@ def get_loss_function(opt):
     
     if opt.get("classification", False):
         # compute weights from dataset counts
-        # MEL, NV, BCC, AKIEC, BKL, DF, VASC
-        train_counts = [779, 4693, 360, 229, 769, 81, 99]
-        cls_weights = [1.0 / c for c in train_counts]
-        cls_weights = torch.tensor(cls_weights, dtype=torch.float)
-        cls_weights = cls_weights / cls_weights.sum() * len(train_counts)
-        cls_weight_tensor = cls_weights.to(device)
-        loss_functions["classification"] = CrossEntropyLoss(weight=cls_weight_tensor)
+        loss_functions["classification"] = CrossEntropyLoss()
 
     if not loss_functions:
         raise RuntimeError(f"No {opt['loss_function_name']} is available")
