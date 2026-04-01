@@ -6,6 +6,7 @@
 @Version  :   1.0
 @License  :   (C)Copyright 2023
 """
+import torch
 from torch.utils.data import DataLoader, WeightedRandomSampler
 
 from .ToothDataset import ToothDataset

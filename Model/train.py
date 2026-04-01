@@ -148,8 +148,7 @@ def main():
         params["metric_names"] = ["ACC_SEG", "DSC", "IoU", "JI"]
         params["seg_classes"] = 2 
         params["cls_classes"] = None 
-        params["lr_seg"] = 1e-4
-        params["lr_cls"] = None 
+        params["learning_rate"] = 0.0001
 
     elif args.task == "classification":
         params["segmentation"] = False
@@ -157,8 +156,7 @@ def main():
         params["metric_names"] = ["ACC_CLS", "AUC_ROC", "F1_MACRO"]
         params["seg_classes"] = None 
         params["cls_classes"] = 7 
-        params["lr_seg"] = None 
-        params["lr_cls"] = 3e-5 
+        params["learning_rate"] = 0.0001
 
     elif args.task == "multitask":
         params["segmentation"] = True
@@ -167,8 +165,8 @@ def main():
         params["seg_classes"] = 2 
         params["cls_classes"] = 7 
         params["seg_guided_cls"] = True
-        params["lr_cls"] = 3e-5
-        params["lr_seg"] = 1e-4
+        params["lr_cls"] = 0.00003
+        params["lr_seg"] = 0.00005
 
     if args.model == "EGEUNet" and params["segmentation"]:
         params["learning_rate"] = 0.001
