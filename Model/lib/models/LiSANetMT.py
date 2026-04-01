@@ -16,7 +16,7 @@ import torch.nn as nn
 from lib.models.modules.LiSAConvBlock import ConvBlock
 from lib.models.modules.LiSALocalPMFSBlock import DownSampleWithLocalPMFSBlock
 from lib.models.modules.LiSAGlobalPMFSBlock import GlobalPMFSBlock_AP_Separate
-
+from lib.models.modules.LiSASEBlock import SEBlock
 
 class LiSANetMT(nn.Module):
     def __init__(self, in_channels=1, seg_out_channels=2, cls_out_channels=7, dim="3d", scaling_version="TINY",
@@ -92,7 +92,13 @@ class LiSANetMT(nn.Module):
             if self.segmentation and seg_out_channels is not None:
                 cls_in_channels += seg_out_channels
 
-            self.classifier_fc = nn.Linear(cls_in_channels, cls_out_channels)
+            self.cls_se = SEBlock(cls_in_channels, reduction=4, dim=dim)
+            self.classifier_fc = nn.Sequential(
+                nn.Linear(cls_in_channels, cls_in_channels // 2),
+                nn.ReLU(inplace=True),
+                nn.Dropout(0.3),
+                nn.Linear(cls_in_channels // 2, cls_out_channels)
+            )
         else:
             self.classifier_fc = None
 
@@ -191,8 +197,9 @@ class LiSANetMT(nn.Module):
         if self.classification and self.classifier_fc is not None:
             cls_features = features
 
-            if self.segmentation and "seg_out" in locals():
+            if self.segmentation and "segmentation" in outputs:
                 # Resize segmentation output to match feature map
+                seg_out = outputs["segmentation"]
                 seg_resized = nn.functional.interpolate(
                     seg_out, 
                     size=features.shape[2:], 
@@ -201,6 +208,7 @@ class LiSANetMT(nn.Module):
                 )
                 cls_features = torch.cat([features, seg_resized], dim=1)
 
+            cls_features = self.cls_se(cls_features)
             cls_features = self.classifier_pool(cls_features)
             cls_features = torch.flatten(cls_features, 1)
             cls_out = self.classifier_fc(cls_features)
