@@ -92,7 +92,7 @@ class LiSANetMT(nn.Module):
             if self.segmentation and seg_out_channels is not None:
                 cls_in_channels += seg_out_channels
 
-            self.cls_se = SEBlock(cls_in_channels, reduction=4, dim=dim)
+            self.cls_se = SEBlock(cls_in_channels, reduction=8, dim=dim)
             self.classifier_fc = nn.Sequential(
                 nn.Linear(cls_in_channels, cls_in_channels // 2),
                 nn.ReLU(inplace=True),

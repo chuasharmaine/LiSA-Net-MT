@@ -103,7 +103,7 @@ class BreastCancerMT(nn.Module):
         cls_out_channels (int): Number of classification output channels (default: 4)
     """
     def __init__(self, in_channels=1, seg_out_channels=2, cls_out_channels=4):
-        super(BreastCancerMultitaskNet, self).__init__()
+        super(BreastCanceMT, self).__init__()
         
         # Encoder
         self.enc1 = EncoderBlock(in_channels, 64)
@@ -157,14 +157,14 @@ if __name__ == '__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
     print("\n" + "="*60)
-    print("Testing BreastCancerMultitaskNet")
+    print("Testing BreastCanceMT")
     print("="*60)
     
     # Test with batch size 2, 1 channel, 128x128 image
     x = torch.randn(2, 1, 128, 128).to(device)
     
     # Multitask model
-    model = BreastCancerMultitaskNet(
+    model = BreastCanceMT(
         in_channels=1,
         seg_out_channels=2,
         cls_out_channels=4

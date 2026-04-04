@@ -73,7 +73,10 @@ params_ISIC_2018 = {
     "factor": 0.3,
     # ————————————————————————————————————————————    Loss And Metric     ———————————————————————————————————————————————————————
     "metric_names": ["DSC", "IoU", "JI"],
-    "loss_function_name": "DiceLoss",
+    "loss_function_name": {
+        "segmentation": "DiceLoss",
+        "classification": "CrossEntropyLoss"
+    },
     "class_weight": [0.029, 1-0.029],
     "sigmoid_normalization": False,
     "dice_loss_mode": "extension",

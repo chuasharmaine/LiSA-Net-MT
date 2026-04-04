@@ -482,7 +482,9 @@ class ISIC2018Trainer:
 
                 mask = mask[:len(per_class_metric)]
                 valid_indices = (mask == 1).nonzero(as_tuple=True)[0]
-                per_class_metric = per_class_metric[valid_indices]                self.statistics_dict[mode][metric_name]["avg"] += (torch.sum(per_class_metric) / torch.sum(mask)).item() * cur_batch_size
+                per_class_metric = per_class_metric[valid_indices] 
+                
+                self.statistics_dict[mode][metric_name]["avg"] += (torch.sum(per_class_metric) / torch.sum(mask)).item() * cur_batch_size
 
                 for j, class_name in self.opt["index_to_class_dict"].items():
                     self.statistics_dict[mode][metric_name][class_name] += per_class_metric[j].item() * cur_batch_size
