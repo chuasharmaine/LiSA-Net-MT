@@ -260,18 +260,34 @@ class ISIC2018Trainer:
                 seg_target = seg_target.long()
                 seg_loss = self.loss_function["segmentation"](seg_out, seg_target)
                 seg_loss_value = seg_loss.item()
-                total_loss = seg_loss if total_loss is None else total_loss + seg_loss
+            else:
+                seg_loss = None
 
             cls_target_idx = cls_target.long() if cls_target is not None else None
 
             if cls_out is not None and cls_target_idx is not None and "classification" in self.loss_function:
                 cls_loss = self.cls_loss_function(cls_out, cls_target_idx)
 
-                cls_prob = torch.softmax(cls_out, dim=1)
-                self.metric_train["F1_MACRO"].update(cls_prob.detach(), cls_target_idx.detach())
+                if self.opt["segmentation"] and self.opt["classification"]:
+                    if not self.seg_guided_cls:
+                        cls_out = cls_out  # keep independent
+                    else:
+                        pass
 
                 cls_loss_value = cls_loss.item()
-                total_loss = total_loss + cls_loss if total_loss is not None else cls_loss
+            else:
+                cls_loss = None
+
+            if self.opt["segmentation"] and self.opt["classification"]:
+                seg_loss = seg_loss * self.opt.get("seg_weight", 1.0)
+                cls_loss = cls_loss * self.opt.get("cls_weight", 1.0)
+            
+            total_loss = None
+            if seg_loss is not None:
+                total_loss = seg_loss if total_loss is None else total_loss + seg_loss
+
+            if cls_loss is not None:
+                total_loss = cls_loss if total_loss is None else total_loss + cls_loss
 
             if seg_loss_value is not None:
                 self.statistics_dict["train"]["seg_loss"] += seg_loss_value * len(input_tensor)
@@ -280,6 +296,7 @@ class ISIC2018Trainer:
 
             # only backward if total_loss is a tensor
             if total_loss is not None:
+                self.statistics_dict["train"]["loss"] += total_loss.item() * len(input_tensor)
                 self.optimizer.zero_grad()
                 total_loss.backward()
                 self.optimizer.step()
@@ -289,20 +306,20 @@ class ISIC2018Trainer:
             # update metrics
             if seg_out is not None and seg_target is not None:
                 self.calculate_metric_and_update_statistcs(
-
                     seg_out,
                     seg_target,
                     len(input_tensor),
-                    loss=total_loss.detach() if total_loss is not None else None,
+                    loss=total_loss.detach() if seg_loss is not None else None,
                     mode="train"
                 )
 
             if cls_out is not None and cls_target is not None:
+                cls_prob = torch.softmax(cls_out, dim=1)
                 self.calculate_metric_and_update_statistcs(
-                    cls_out,
+                    cls_prob,
                     cls_target_idx,
                     len(input_tensor),
-                    loss=total_loss.detach() if total_loss is not None and (seg_out is None or seg_target is None) else None,
+                    loss=total_loss.detach() if cls_loss is not None and (seg_out is None or seg_target is None) else None,
                     mode="train"
                 )
 
@@ -363,24 +380,24 @@ class ISIC2018Trainer:
                         pred_prob = torch.softmax(seg_out, dim=1)
 
                     self.calculate_metric_and_update_statistcs(
-                        pred_prob.cpu().float(),
-                        seg_target.cpu().float(),
+                        pred_prob.detach().cpu().float(),
+                        seg_target.detach().cpu().float(),
                         len(input_tensor),
                         loss=None,
                         mode="valid"
                     )
 
-                if cls_out is not None and cls_out.numel() > 0 and cls_target is not None:
+                if cls_out is not None and cls_target is not None:
                     cls_target_idx = cls_target.long()
 
                     cls_prob = torch.softmax(cls_out, dim=1)
 
-                    self.metric_valid["AUC_ROC"].update(cls_prob.cpu(), cls_target_idx.cpu())
+                    self.metric_valid["AUC_ROC"].update(cls_prob.detach().cpu(), cls_target_idx.cpu())
                     self.metric_valid["F1_MACRO"].update(cls_prob.detach().cpu(), cls_target_idx.detach().cpu())
 
                     self.calculate_metric_and_update_statistcs(
-                        cls_prob.cpu(),
-                        cls_target_idx.cpu(),
+                        cls_prob.detach().cpu(),
+                        cls_target_idx.detach().cpu(),
                         len(input_tensor),
                         loss=None,
                         mode="valid"
@@ -397,8 +414,10 @@ class ISIC2018Trainer:
                 self.save(epoch, cur_JI, self.best_metric_seg, type="best_seg")
 
     def calculate_metric_and_update_statistcs(self, output, target, cur_batch_size, loss=None, mode="train"):
-        # check which task
+        output = output.detach().cpu()
+        target = target.detach().cpu()
         is_seg_output = output.ndim == 4
+        # check which task
         if is_seg_output:
             mask = torch.zeros(self.seg_classes)
         else:
@@ -461,11 +480,9 @@ class ISIC2018Trainer:
                     value = per_class_metric.item()
                     self.statistics_dict[mode][metric_name]["avg"] += value * cur_batch_size
 
-                mask = mask.to(per_class_metric.device)
                 mask = mask[:len(per_class_metric)]
-                per_class_metric = per_class_metric[:len(mask)] * mask
-
-                self.statistics_dict[mode][metric_name]["avg"] += (torch.sum(per_class_metric) / torch.sum(mask)).item() * cur_batch_size
+                valid_indices = (mask == 1).nonzero(as_tuple=True)[0]
+                per_class_metric = per_class_metric[valid_indices]                self.statistics_dict[mode][metric_name]["avg"] += (torch.sum(per_class_metric) / torch.sum(mask)).item() * cur_batch_size
 
                 for j, class_name in self.opt["index_to_class_dict"].items():
                     self.statistics_dict[mode][metric_name][class_name] += per_class_metric[j].item() * cur_batch_size
