@@ -315,6 +315,19 @@ class ISIC2018Trainer:
 
             if cls_out is not None and cls_target is not None:
                 cls_prob = torch.softmax(cls_out, dim=1)
+                
+                if "F1_MACRO" in self.metric_train:
+                    self.metric_train["F1_MACRO"].update(
+                        cls_prob.detach().cpu(),
+                        cls_target_idx.detach().cpu()
+                    )
+
+                if "AUC_ROC" in self.metric_train:
+                    self.metric_train["AUC_ROC"].update(
+                        cls_prob.detach().cpu(),
+                        cls_target_idx.detach().cpu()
+                    )
+
                 self.calculate_metric_and_update_statistcs(
                     cls_prob,
                     cls_target_idx,
