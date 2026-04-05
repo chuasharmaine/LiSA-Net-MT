@@ -170,6 +170,7 @@ def main():
         params["seg_guided_cls"] = True
         params["lr_cls"] = 0.00003
         params["lr_seg"] = 0.00005
+        params["learning_rate"] = 0.00005
 
     if args.model == "EGEUNet" and params["segmentation"]:
         params["learning_rate"] = 0.001
