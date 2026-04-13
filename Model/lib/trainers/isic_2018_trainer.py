@@ -40,8 +40,6 @@ class ISIC2018Trainer:
         self.device = opt["device"]
         self.seg_classes = opt.get("seg_classes", 1)
         self.cls_classes = opt.get("cls_classes", 7)
-        if self.cls_classes is None:
-            self.cls_classes = len(set([self.train_data_loader.dataset[i][1] for i in range(len(self.train_data_loader.dataset))]))
 
         self.seg_guided_cls = False
         self.seg_guided_cls = opt.get("seg_guided_cls", False)
@@ -315,21 +313,13 @@ class ISIC2018Trainer:
 
             if cls_out is not None and cls_target is not None:
                 cls_prob = torch.softmax(cls_out, dim=1)
-                
-                if "F1_MACRO" in self.metric_train:
-                    self.metric_train["F1_MACRO"].update(
-                        cls_prob.detach().cpu(),
-                        cls_target_idx.detach().cpu()
-                    )
+                cls_pred = torch.argmax(cls_out, dim=1)
 
-                if "AUC_ROC" in self.metric_train:
-                    self.metric_train["AUC_ROC"].update(
-                        cls_prob.detach().cpu(),
-                        cls_target_idx.detach().cpu()
-                    )
+                self.metric_train["F1_MACRO"].update(cls_pred.detach().cpu(), cls_target_idx.detach().cpu())
+                self.metric_train["AUC_ROC"].update(cls_prob.detach().cpu(), cls_target_idx.detach().cpu())
 
                 self.calculate_metric_and_update_statistcs(
-                    cls_prob,
+                    cls_pred.detach().cpu(),
                     cls_target_idx,
                     len(input_tensor),
                     loss=total_loss.detach() if cls_loss is not None and (seg_out is None or seg_target is None) else None,
@@ -404,12 +394,13 @@ class ISIC2018Trainer:
                     cls_target_idx = cls_target.long()
 
                     cls_prob = torch.softmax(cls_out, dim=1)
+                    cls_pred = torch.argmax(cls_out, dim=1)
 
                     self.metric_valid["AUC_ROC"].update(cls_prob.detach().cpu(), cls_target_idx.cpu())
-                    self.metric_valid["F1_MACRO"].update(cls_prob.detach().cpu(), cls_target_idx.detach().cpu())
+                    self.metric_valid["F1_MACRO"].update(cls_pred.detach().cpu(), cls_target_idx.detach().cpu())
 
                     self.calculate_metric_and_update_statistcs(
-                        cls_prob.detach().cpu(),
+                        cls_pred.detach().cpu(),
                         cls_target_idx.detach().cpu(),
                         len(input_tensor),
                         loss=None,

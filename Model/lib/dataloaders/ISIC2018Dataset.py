@@ -94,6 +94,7 @@ class ISIC2018Dataset(Dataset):
             return 0
 
     def __getitem__(self, index):
+        image = None
         mask = None
         label = None
 
@@ -102,29 +103,29 @@ class ISIC2018Dataset(Dataset):
             image_path = self.seg_images_list[seg_index]
             mask_path = self.seg_labels_list[seg_index]
             image = cv2.imread(image_path, cv2.IMREAD_COLOR)
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             mask = cv2.imread(mask_path, -1)
             mask[mask == 255] = 1
             mask = mask.astype(np.uint8)
-        else:
-            cls_index = index % len(self.cls_images_list)
-            image_path = self.cls_images_list[cls_index]
-            image = cv2.imread(image_path, cv2.IMREAD_COLOR)
-            mask = np.zeros_like(image[:, :, 0], dtype=np.uint8)
 
-        # Classification
-        label = None
         if self.classification:
             cls_index = index % len(self.cls_images_list)
             cls_image_path = self.cls_images_list[cls_index]
+            if image is None:
+                image = cv2.imread(cls_image_path, cv2.IMREAD_COLOR)
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             filename = os.path.splitext(os.path.basename(cls_image_path))[0]
             label_list = self.cls_labels_dict[filename]
             label = torch.tensor(label_list, dtype=torch.float32)
             label = torch.argmax(label).long()
-            if not self.segmentation:
-                image = cv2.imread(cls_image_path, cv2.IMREAD_COLOR)
 
         # Apply transforms
         image, mask = self.transforms_dict[self.mode](image, mask)
+        
+        if mask is not None:
+            if mask.ndim == 3:
+                mask = mask.squeeze(0)
+            mask = mask.long()
 
         # multitask
         if self.segmentation and self.classification:
