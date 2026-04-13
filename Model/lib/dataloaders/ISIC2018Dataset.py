@@ -35,12 +35,29 @@ class ISIC2018Dataset(Dataset):
         self.segmentation = opt["segmentation"]
         self.classification = opt["classification"]
 
-        self.root = opt["dataset_path"]
+        if self.segmentation and self.classification:
+            self.root = os.path.join(opt["dataset_path"], "multitask", mode)
+        elif self.segmentation:
+            self.root = os.path.join(opt["dataset_path"], "segmentation", mode)
+        else:
+            self.root = os.path.join(opt["dataset_path"], "classification", mode)
 
-        self.seg_images_list = []
-        self.seg_labels_list = []
-        self.cls_images_list = []
+        self.image_paths = sorted(glob.glob(os.path.join(self.root, "images", "*.jpg")))
+        self.image_names = [os.path.splitext(os.path.basename(p))[0] for p in self.image_paths]
+
         self.cls_labels_dict = {}
+        # Classification
+        if self.classification:
+            label_csv = os.path.join(self.root, "labels.csv")
+            with open(label_csv, "r") as f:
+                reader = csv.reader(f)
+                header = next(reader)  
+                for row in reader:
+                    image_id = row[0]
+                    labels = list(map(float, row[1:]))
+                    self.cls_labels_dict[image_id] = labels
+
+            self.image_names = [n for n in self.image_names if n in self.cls_labels_dict]
 
         # transforms
         self.transforms_dict = {
@@ -62,72 +79,35 @@ class ISIC2018Dataset(Dataset):
             ])
         }
 
-        # Segmentation
-        if self.segmentation:
-            folder = os.path.join(self.root, "segmentation", mode)
-            self.seg_images_list = sorted(glob.glob(os.path.join(folder, "images", "*.jpg")))
-            self.seg_labels_list = sorted(glob.glob(os.path.join(folder, "masks", "*_segmentation.png")))
-
-        # Classification
-        if self.classification:
-            folder = os.path.join(self.root, "classification", mode)
-            self.cls_images_list = sorted(glob.glob(os.path.join(folder, "images", "*.jpg")))
-            label_csv = os.path.join(folder, "labels.csv")
-            self.cls_labels_dict = {}
-            with open(label_csv, "r") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    self.cls_labels_dict[row["image"]] = [float(row[c]) for c in reader.fieldnames if c != "image"]
-            self.cls_images_list = [
-                img for img in self.cls_images_list
-                if os.path.splitext(os.path.basename(img))[0] in self.cls_labels_dict
-            ]
-
     def __len__(self):
-        if self.segmentation and self.classification:
-            return max(len(self.seg_images_list), len(self.cls_images_list))
-        elif self.segmentation:
-            return len(self.seg_images_list)
-        elif self.classification:
-            return len(self.cls_images_list)
-        else:
-            return 0
+        return len(self.image_names)
 
     def __getitem__(self, index):
-        image = None
+        image_name = self.image_names[index]
+        
+        img_path = os.path.join(self.root, "images", image_name + ".jpg")
+        image = cv2.imread(img_path)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
         mask = None
-        label = None
-
         if self.segmentation:
-            seg_index = index % len(self.seg_images_list)
-            image_path = self.seg_images_list[seg_index]
-            mask_path = self.seg_labels_list[seg_index]
-            image = cv2.imread(image_path, cv2.IMREAD_COLOR)
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            mask = cv2.imread(mask_path, -1)
-            mask[mask == 255] = 1
-            mask = mask.astype(np.uint8)
+            mask_path = os.path.join(self.root, "masks", image_name + "_segmentation.png")
+            mask = cv2.imread(mask_path, 0)
+            mask[mask == 255] = 1 
+        
+        # apply transforms
+        if self.segmentation:
+            image, mask = self.transforms_dict[self.mode](image, mask)
+            mask = mask.squeeze(0).long()
+        else:
+            image = self.transforms_dict[self.mode](image, None)[0]
 
+        label = None
         if self.classification:
-            cls_index = index % len(self.cls_images_list)
-            cls_image_path = self.cls_images_list[cls_index]
-            if image is None:
-                image = cv2.imread(cls_image_path, cv2.IMREAD_COLOR)
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            filename = os.path.splitext(os.path.basename(cls_image_path))[0]
-            label_list = self.cls_labels_dict[filename]
+            label_list = self.cls_labels_dict[image_name]
             label = torch.tensor(label_list, dtype=torch.float32)
             label = torch.argmax(label).long()
 
-        # Apply transforms
-        image, mask = self.transforms_dict[self.mode](image, mask)
-        
-        if mask is not None:
-            if mask.ndim == 3:
-                mask = mask.squeeze(0)
-            mask = mask.long()
-
-        # multitask
         if self.segmentation and self.classification:
             return image, mask, label
         elif self.segmentation:

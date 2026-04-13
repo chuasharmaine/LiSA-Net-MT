@@ -46,19 +46,19 @@ params_ISIC_2018 = {
     "classification": True, 
     "index_to_class_dict":
     {
-        0: "Melanoma",
-        1: "Melanocytic nevus",
-        2: "Basal cell carcinoma",
-        3: "Actinic keratosis",
-        4: "Benign keratosis",
-        5: "Dermatofibroma",
-        6: "Vascular lesion"
+        0: "MEL", # Melanoma
+        1: "NV", # Melanocytic nevus
+        2: "BCC", # Basal cell carcinoma
+        3: "AKIEC", # Actinic keratosis
+        4: "BKL", # Benign keratosis
+        5: "DF", # Dermatofibroma
+        6: "VASC"  # Vascular lesion
     },
     "resume": None,
     "pretrain": None,
     # ——————————————————————————————————————————————    Optimizer     ——————————————————————————————————————————————————————
     "optimizer_name": "AdamW",
-    "learning_rate": None,
+    "learning_rate": 0.00005,
     "weight_decay": 0.000001,
     "momentum": 0.9657205586290213,
     # ———————————————————————————————————————————    Learning Rate Scheduler     —————————————————————————————————————————————————————
@@ -72,7 +72,7 @@ params_ISIC_2018 = {
     "patience": 20,
     "factor": 0.3,
     # ————————————————————————————————————————————    Loss And Metric     ———————————————————————————————————————————————————————
-    "metric_names": ["DSC", "IoU", "JI"],
+    "metric_names": ["ACC_SEG", "DSC", "IoU", "JI", "ACC_CLS", "AUC_ROC", "F1_MACRO"],
     "loss_function_name": {
         "segmentation": "DiceLoss",
         "classification": "CrossEntropyLoss"
@@ -91,6 +91,8 @@ params_ISIC_2018 = {
     "best_metric": 0,
     "terminal_show_freq": 20,
     "save_epoch_freq": 50,
+    "seg_weight": 0.7,
+    "cls_weight": 0.3,
 }
  
 def parse_args():
