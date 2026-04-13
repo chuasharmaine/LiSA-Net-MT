@@ -29,6 +29,10 @@ class LiSANetMT(nn.Module):
         self.classification = classification
         self.scaling_version = scaling_version
         self.dim = dim
+        # toggle:
+        #  - False for normal multitask (default)
+        #  - True for segmentation-guided classification
+        self.seg_guided_cls = False 
 
         if scaling_version == "BASIC":
             base_channels = [24, 48, 64]
@@ -89,7 +93,7 @@ class LiSANetMT(nn.Module):
 
         if self.classification:
             cls_in_channels = downsample_channels[-1]
-            if self.segmentation and seg_out_channels is not None:
+            if self.seg_guided_cls:
                 cls_in_channels += seg_out_channels
 
             self.cls_se = SEBlock(cls_in_channels, reduction=8, dim=dim)
@@ -197,7 +201,7 @@ class LiSANetMT(nn.Module):
         if self.classification and self.classifier_fc is not None:
             cls_features = features
 
-            if self.segmentation and "segmentation" in outputs:
+            if self.seg_guided_cls and "segmentation" in outputs:
                 # Resize segmentation output to match feature map
                 seg_out = outputs["segmentation"]
                 seg_resized = nn.functional.interpolate(

@@ -125,8 +125,6 @@ def main():
         params["end_epoch"] = args.epoch
         params["save_epoch_freq"] = max(1, args.epoch // 4)
 
-    params["seg_guided_cls"] = True   # False if normal multitask
-
     # launch initialization
     os.environ["CUDA_VISIBLE_DEVICES"] = params["CUDA_VISIBLE_DEVICES"]
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
@@ -167,7 +165,6 @@ def main():
         params["metric_names"] = ["ACC_SEG", "DSC", "IoU", "JI", "ACC_CLS", "AUC_ROC", "F1_MACRO"]
         params["seg_classes"] = 2 
         params["cls_classes"] = 7 
-        params["seg_guided_cls"] = True
         params["lr_cls"] = 0.00003
         params["lr_seg"] = 0.00005
         params["learning_rate"] = 0.00005
