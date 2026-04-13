@@ -315,7 +315,7 @@ class ISIC2018Trainer:
                 cls_prob = torch.softmax(cls_out, dim=1)
                 cls_pred = torch.argmax(cls_out, dim=1)
 
-                self.metric_train["F1_MACRO"].update(cls_pred.detach().cpu(), cls_target_idx.detach().cpu())
+                self.metric_train["F1_MACRO"].update(cls_out.detach().cpu(), cls_target_idx.detach().cpu())
                 self.metric_train["AUC_ROC"].update(cls_prob.detach().cpu(), cls_target_idx.detach().cpu())
 
                 self.calculate_metric_and_update_statistcs(
@@ -397,7 +397,7 @@ class ISIC2018Trainer:
                     cls_pred = torch.argmax(cls_out, dim=1)
 
                     self.metric_valid["AUC_ROC"].update(cls_prob.detach().cpu(), cls_target_idx.cpu())
-                    self.metric_valid["F1_MACRO"].update(cls_pred.detach().cpu(), cls_target_idx.detach().cpu())
+                    self.metric_valid["F1_MACRO"].update(cls_out.detach().cpu(), cls_target_idx.detach().cpu())
 
                     self.calculate_metric_and_update_statistcs(
                         cls_pred.detach().cpu(),

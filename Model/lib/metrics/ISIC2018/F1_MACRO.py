@@ -26,6 +26,9 @@ class F1_MACRO(object):
             input: model logits [B, C]
             target: ground truth labels [B]
         """
+        if input.ndim == 1:
+            raise ValueError("F1_MACRO expects logits of shape [B, C], got [B]")
+
         preds = torch.argmax(input, dim=1)
 
         preds = preds.detach().cpu().numpy()
