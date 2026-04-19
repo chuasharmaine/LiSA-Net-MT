@@ -293,14 +293,18 @@ def main():
     elif args.task == "classification":
         params["segmentation"] = False
         params["classification"] = True
-    elif args.task == "multitask":
-        params["segmentation"] = True if hasattr(model, "segmentation_head") else False
-        params["classification"] = True if hasattr(model, "classification_head") else False
-
-    print(f"Segmentation head: {params['segmentation']}, Classification head: {params['classification']}")
+    else:  # multitask
+        params["segmentation"] = True
+        params["classification"] = True
+ 
+    print(f"Segmentation: {params['segmentation']}, Classification: {params['classification']}")
+ 
+    # initialize the metrics
+    metric = metrics.get_metric(params)
+    print("Complete the initialization of metrics")
 
     # initialize the tester
-    tester = testers.get_tester(params, model)
+    tester = testers.get_tester(params, model, metric)
     print("Complete the initialization of tester")
 
     # load training weights
@@ -311,7 +315,9 @@ def main():
     if args.image_path:
         # single image inference
         print(f"Performing inference on single image: {args.image_path}")
-        tester.inference(args.image_path)
+        output_path = args.image_path.replace(".jpg", "_seg.png").replace(".png", "_seg.png")
+        tester.inference(args.image_path, output_path)
+ 
     elif args.images_dir:
         # Get all image paths from the specified directory
         image_paths = glob(os.path.join(args.images_dir, '*'))
@@ -319,7 +325,8 @@ def main():
         # Perform inference on each image
         for image_path in image_paths:
             print(f"Performing inference on image: {image_path}")
-            tester.inference(image_path)
+            output_path = image_path.replace(".jpg", "_seg.png").replace(".png", "_seg.png")
+            tester.inference(image_path, output_path)
 
 
 if __name__ == '__main__':

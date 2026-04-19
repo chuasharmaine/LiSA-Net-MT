@@ -47,13 +47,20 @@ class ISIC2018Tester:
             image = image.to(self.device)
             output = self.model(image)
 
-        seg_out, cls_out = None, None
-        if self.opt["segmentation"] and self.opt["classification"]:
-            seg_out, cls_out = output
-        elif self.opt["segmentation"]:
-            seg_out = output
-        elif self.opt["classification"]:
-            cls_out = output
+
+        if isinstance(output, dict):
+            seg_out = output.get("segmentation") if self.opt.get("segmentation") else None
+            cls_out = output.get("classification") if self.opt.get("classification") else None
+        elif isinstance(output, tuple):
+            if self.opt.get("segmentation") and len(output) > 0:
+                seg_out = output[0]
+            if self.opt.get("classification") and len(output) > 1:
+                cls_out = output[1]
+        else:
+            if self.opt.get("segmentation"):
+                seg_out = output
+            elif self.opt.get("classification"):
+                cls_out = output
 
         # Segmentation output
         if seg_out is not None and output_path is not None:
@@ -70,6 +77,12 @@ class ISIC2018Tester:
 
     def evaluation(self, dataloader):
         self.reset_statistics_dict()
+
+        if "AUC_ROC" in self.metrics:
+            self.metrics["AUC_ROC"].reset()
+        if "F1_MACRO" in self.metrics:
+            self.metrics["F1_MACRO"].reset()
+
         self.model.eval()
 
         with torch.no_grad():
@@ -95,12 +108,19 @@ class ISIC2018Tester:
                 output = self.model(input_tensor)
 
                 seg_out, cls_out = None, None
-                if self.opt["segmentation"] and self.opt["classification"]:
-                    seg_out, cls_out = output
-                elif self.opt["segmentation"]:
-                    seg_out = output
-                elif self.opt["classification"]:
-                    cls_out = output
+                if isinstance(output, dict):
+                    seg_out = output.get("segmentation") if self.opt.get("segmentation") else None
+                    cls_out = output.get("classification") if self.opt.get("classification") else None
+                elif isinstance(output, tuple):
+                    if self.opt.get("segmentation") and len(output) > 0:
+                        seg_out = output[0]
+                    if self.opt.get("classification") and len(output) > 1:
+                        cls_out = output[1]
+                else:
+                    if self.opt.get("segmentation"):
+                        seg_out = output
+                    elif self.opt.get("classification"):
+                        cls_out = output
 
                 if seg_out is not None:
                     self.calculate_metric_and_update_statistcs(
@@ -127,23 +147,26 @@ class ISIC2018Tester:
             print("valid_DSC:{:.6f}  valid_IoU:{:.6f}  valid_ACC:{:.6f}  valid_JI:{:.6f}".format(dsc, class_IoU[1], ACC_seg, JI))
         if self.opt["classification"]:
             ACC_cls = self.statistics_dict.get("ACC_cls_sum", 0) / self.statistics_dict["count"]
-            AUC_ROC = self.statistics_dict.get("AUC_ROC_sum", 0) / self.statistics_dict["count"]
-            F1_MACRO = self.statistics_dict.get("F1_MACRO_sum", 0) / self.statistics_dict["count"]
+            AUC_ROC = self.metrics["AUC_ROC"].compute()
+            F1_MACRO = self.metrics["F1_MACRO"].compute()
+            
             print("valid_ACC_cls:{:.6f}  valid_AUC_ROC:{:.6f}  valid_F1_MACRO:{:.6f}".format(ACC_cls, AUC_ROC, F1_MACRO))
 
     def calculate_metric_and_update_statistcs(self, output, target, cur_batch_size, task="segmentation"):
+        
+        num_classes = (
+            self.opt["seg_classes"] if task == "segmentation"
+            else self.opt["cls_classes"]
+        )
 
-        if task == "segmentation":
-            mask = torch.zeros(self.opt["classes"])
-            unique_index = torch.unique(target).int()
-            for index in unique_index:
-                mask[index] = 1
-        else:
-            mask = torch.ones(self.opt["classes"])
+        unique_index = torch.unique(target).int()
 
         self.statistics_dict["count"] += cur_batch_size
         for i, class_name in self.opt["index_to_class_dict"].items():
-            if mask[i] == 1:
+            if i >= num_classes:
+                continue
+
+            if i in unique_index:
                 self.statistics_dict["class_count"][class_name] += cur_batch_size
 
         for metric_name, metric_func in self.metrics.items():
@@ -170,26 +193,24 @@ class ISIC2018Tester:
                 if metric_name == "ACC_CLS":
                     self.statistics_dict["ACC_cls_sum"] += metric_func(output, target) * cur_batch_size
                 elif metric_name == "AUC_ROC":
-                    self.statistics_dict.setdefault("AUC_ROC_sum", 0)
-                    self.statistics_dict["AUC_ROC_sum"] += metric_func(output, target) * cur_batch_size
+                    probs = torch.softmax(output, dim=1)
+                    self.metrics["AUC_ROC"].update(probs.cpu(), target.cpu())
+
                 elif metric_name == "F1_MACRO":
-                    self.statistics_dict.setdefault("F1_MACRO_sum", 0)
-                    self.statistics_dict["F1_MACRO_sum"] += metric_func(output, target) * cur_batch_size
+                    self.metrics["F1_MACRO"].update(output.cpu(), target.cpu())
 
     def init_statistics_dict(self):
         statistics_dict = {
             metric_name: {class_name: 0.0 for _, class_name in self.opt["index_to_class_dict"].items()}
             for metric_name in self.opt["metric_names"]
         }
-        num_classes = self.opt.get("seg_classes") or self.opt.get("cls_classes") or 1
+        num_classes = self.opt.get("seg_classes", 2) if self.opt.get("segmentation") else self.opt.get("cls_classes", 7)
         statistics_dict["total_area_intersect"] = np.zeros((num_classes,))
         statistics_dict["total_area_union"] = np.zeros((num_classes,))
         statistics_dict["JI_sum"] = 0.0
         statistics_dict["ACC_seg_sum"] = 0.0
         statistics_dict["ACC_cls_sum"] = 0.0
         statistics_dict["DSC_sum"] = 0.0
-        statistics_dict["AUC_ROC_sum"] = 0.0
-        statistics_dict["F1_MACRO_sum"] = 0.0
         for metric_name in self.opt["metric_names"]:
             statistics_dict[metric_name]["avg"] = 0.0
         statistics_dict["class_count"] = {class_name: 0 for _, class_name in self.opt["index_to_class_dict"].items()}
@@ -199,14 +220,16 @@ class ISIC2018Tester:
 
     def reset_statistics_dict(self):
         self.statistics_dict["count"] = 0
-        self.statistics_dict["total_area_intersect"] = np.zeros((self.opt["classes"],))
-        self.statistics_dict["total_area_union"] = np.zeros((self.opt["classes"],))
+        num_classes = (
+            self.opt["seg_classes"] if self.opt.get("segmentation") 
+            else self.opt["cls_classes"]
+        )
+        self.statistics_dict["total_area_intersect"] = np.zeros((num_classes,))
+        self.statistics_dict["total_area_union"] = np.zeros((num_classes,))
         self.statistics_dict["JI_sum"] = 0.0
         self.statistics_dict["ACC_seg_sum"] = 0.0
         self.statistics_dict["ACC_cls_sum"] = 0.0
         self.statistics_dict["DSC_sum"] = 0.0
-        self.statistics_dict["AUC_ROC_sum"] = 0.0
-        self.statistics_dict["F1_MACRO_sum"] = 0.0
         for _, class_name in self.opt["index_to_class_dict"].items():
             self.statistics_dict["class_count"][class_name] = 0
         for metric_name in self.opt["metric_names"]:
@@ -215,7 +238,7 @@ class ISIC2018Tester:
                 self.statistics_dict[metric_name][class_name] = 0.0
 
     def load(self):
-        pretrain_state_dict = torch.load(self.opt["pretrain"], map_location=lambda storage, loc: storage.cuda(self.device))
+        pretrain_state_dict = torch.load(self.opt["pretrain"], map_location=self.device)
         model_state_dict = self.model.state_dict()
         load_count = 0
         for param_name in model_state_dict.keys():

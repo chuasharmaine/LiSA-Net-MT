@@ -46,19 +46,19 @@ params_ISIC_2018 = {
     "classification": True, 
     "index_to_class_dict":
     {
-        0: "Melanoma",
-        1: "Melanocytic nevus",
-        2: "Basal cell carcinoma",
-        3: "Actinic keratosis",
-        4: "Benign keratosis",
-        5: "Dermatofibroma",
-        6: "Vascular lesion"
+        0: "MEL", # Melanoma
+        1: "NV", # Melanocytic nevus
+        2: "BCC", # Basal cell carcinoma
+        3: "AKIEC", # Actinic keratosis
+        4: "BKL", # Benign keratosis
+        5: "DF", # Dermatofibroma
+        6: "VASC"  # Vascular lesion
     },
     "resume": None,
     "pretrain": None,
     # ——————————————————————————————————————————————    Optimizer     ——————————————————————————————————————————————————————
     "optimizer_name": "AdamW",
-    "learning_rate": 0.005,
+    "learning_rate": 0.00005,
     "weight_decay": 0.000001,
     "momentum": 0.9657205586290213,
     # ———————————————————————————————————————————    Learning Rate Scheduler     —————————————————————————————————————————————————————
@@ -66,15 +66,17 @@ params_ISIC_2018 = {
     "gamma": 0.9582311026945434,
     "step_size": 20,
     "milestones": [1, 3, 5, 7, 8, 9],
-    "T_max": 100,
-    "T_0": 5,
-    "T_mult": 5,
+    "T_0": 20,
+    "T_mult": 1,
     "mode": "max",
     "patience": 20,
     "factor": 0.3,
     # ————————————————————————————————————————————    Loss And Metric     ———————————————————————————————————————————————————————
-    "metric_names": ["DSC", "IoU", "JI"],
-    "loss_function_name": "DiceLoss",
+    "metric_names": ["ACC_SEG", "DSC", "IoU", "JI", "ACC_CLS", "AUC_ROC", "F1_MACRO"],
+    "loss_function_name": {
+        "segmentation": "DiceLoss",
+        "classification": "CrossEntropyLoss"
+    },
     "class_weight": [0.029, 1-0.029],
     "sigmoid_normalization": False,
     "dice_loss_mode": "extension",
@@ -89,6 +91,8 @@ params_ISIC_2018 = {
     "best_metric": 0,
     "terminal_show_freq": 20,
     "save_epoch_freq": 50,
+    "seg_weight": 0.7,
+    "cls_weight": 0.3,
 }
  
 def parse_args():
@@ -121,9 +125,7 @@ def main():
     params["scaling_version"] = args.scaling_version
     if args.epoch is not None:
         params["end_epoch"] = args.epoch
-        params["save_epoch_freq"] = args.epoch // 4
-
-    params["seg_guided_cls"] = True   # False if normal multitask
+        params["save_epoch_freq"] = max(1, args.epoch // 4)
 
     # launch initialization
     os.environ["CUDA_VISIBLE_DEVICES"] = params["CUDA_VISIBLE_DEVICES"]
@@ -149,8 +151,7 @@ def main():
         params["metric_names"] = ["ACC_SEG", "DSC", "IoU", "JI"]
         params["seg_classes"] = 2 
         params["cls_classes"] = None 
-        params["lr_seg"] = 0.005 
-        params["lr_cls"] = None 
+        params["learning_rate"] = 0.0001
 
     elif args.task == "classification":
         params["segmentation"] = False
@@ -158,8 +159,7 @@ def main():
         params["metric_names"] = ["ACC_CLS", "AUC_ROC", "F1_MACRO"]
         params["seg_classes"] = None 
         params["cls_classes"] = 7 
-        params["lr_seg"] = None 
-        params["lr_cls"] = 0.0003 
+        params["learning_rate"] = 0.0001
 
     elif args.task == "multitask":
         params["segmentation"] = True
@@ -167,9 +167,12 @@ def main():
         params["metric_names"] = ["ACC_SEG", "DSC", "IoU", "JI", "ACC_CLS", "AUC_ROC", "F1_MACRO"]
         params["seg_classes"] = 2 
         params["cls_classes"] = 7 
-        params["seg_guided_cls"] = True
-        params["lr_seg"] = 0.005 
-        params["lr_cls"] = 0.0003  
+        params["lr_cls"] = 0.00003
+        params["lr_seg"] = 0.00005
+        params["learning_rate"] = 0.00005
+
+    if args.model == "EGEUNet" and params["segmentation"]:
+        params["learning_rate"] = 0.001
 
     print(f"Segmentation training: {params['segmentation']}, Classification training: {params['classification']}")
 
@@ -182,7 +185,7 @@ def main():
     print("Complete the initialization of model:{}, optimizer:{}, and lr_scheduler:{}".format(params["model_name"], params["optimizer_name"], params["lr_scheduler_name"]))
 
     # initialize the loss function
-    loss_function = losses.get_loss_function(params)
+    loss_functions = losses.get_loss_function(params)
     print("Complete the initialization of loss function")
 
     # initialize the metrics
@@ -190,7 +193,7 @@ def main():
     print("Complete the initialization of metrics")
 
     # initialize the trainer
-    trainer = trainers.get_trainer(params, train_loader, valid_loader, model, optimizer, lr_scheduler, loss_function, metric)
+    trainer = trainers.get_trainer(params, train_loader, valid_loader, model, optimizer, lr_scheduler, loss_functions, metric)
 
     # resume or load pretrained weights
     if (params["resume"] is not None) or (params["pretrain"] is not None):
