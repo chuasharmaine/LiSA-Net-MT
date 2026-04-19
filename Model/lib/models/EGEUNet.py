@@ -3,12 +3,11 @@
 @Contact  :   jackchenruan@sjtu.edu.cn
 @DateTime :   2023/07/17 
 @Version  :   1.0
-"""
 
-"""
-@DateTime   :   2026/02/23
-@Note       :   Framework compatibility adaptation. 
-                Core EGEUNet architecture remains unchanged.
+Note: This is a simplified re-implementation inspired by the EGE-UNet paper.
+It is included as a segmentation baseline for comparison.
+The performance may not exactly match the official paper results due to differences
+in preprocessing, augmentation, and training setup.
 """
 
 import torch
@@ -92,7 +91,7 @@ class Grouped_multi_axis_Hadamard_Product_Attention(nn.Module):
         return x
 
 class EGEUNet(nn.Module):
-    def __init__(self, num_classes=1, input_channels=3, c_list=[8,16,24,32,48,64], bridge=True):
+    def __init__(self, num_classes=2, input_channels=3, c_list=[16,32,48,64,96,128], bridge=True):
         super().__init__()
         self.bridge = bridge
         
@@ -136,33 +135,21 @@ class EGEUNet(nn.Module):
         t5 = F.gelu(F.max_pool2d(self.encoder5(t4),2))
         t6 = F.gelu(self.encoder6(t5))
 
-        out5 = self.decoder1(t6)
-        if self.bridge:
-            out5 = F.interpolate(out5, size=(t5.size(2), t5.size(3)), mode='bilinear', align_corners=True)
-            out5 = self.GAB5(t6, t5)
+        out5_dec = self.decoder1(t6)
+        out5 = out5_dec + self.GAB5(t6, t5) if self.bridge else out5_dec
 
-        out4 = self.decoder2(out5)
-        out4 = F.interpolate(out4, size=(t4.size(2), t4.size(3)), mode='bilinear', align_corners=True)
-        if self.bridge:
-            out4 = self.GAB4(out5, t4)
+        out4_dec = F.interpolate(self.decoder2(out5), size=(t4.size(2), t4.size(3)), mode='bilinear', align_corners=True)
+        out4 = out4_dec + self.GAB4(out5, t4) if self.bridge else out4_dec
 
-        out3 = self.decoder3(out4)
-        out3 = F.interpolate(out3, size=(t3.size(2), t3.size(3)), mode='bilinear', align_corners=True)
-        if self.bridge:
-            out3 = self.GAB3(out4, t3)
+        out3_dec = F.interpolate(self.decoder3(out4), size=(t3.size(2), t3.size(3)), mode='bilinear', align_corners=True)
+        out3 = out3_dec + self.GAB3(out4, t3) if self.bridge else out3_dec
 
-        out2 = self.decoder4(out3)
-        out2 = F.interpolate(out2, size=(t2.size(2), t2.size(3)), mode='bilinear', align_corners=True)
-        if self.bridge:
-            out2 = self.GAB2(out3, t2)
+        out2_dec = F.interpolate(self.decoder4(out3), size=(t2.size(2), t2.size(3)), mode='bilinear', align_corners=True)
+        out2 = out2_dec + self.GAB2(out3, t2) if self.bridge else out2_dec
 
-        out1 = self.decoder5(out2)
-        out1 = F.interpolate(out1, size=(t1.size(2), t1.size(3)), mode='bilinear', align_corners=True)
-        if self.bridge:
-            out1 = self.GAB1(out2, t1)
+        out1_dec = F.interpolate(self.decoder5(out2), size=(t1.size(2), t1.size(3)), mode='bilinear', align_corners=True)
+        out1 = out1_dec + self.GAB1(out2, t1) if self.bridge else out1_dec
 
         out0 = self.final(out1)
         out0 = F.interpolate(out0, size=(x.size(2), x.size(3)), mode='bilinear', align_corners=True)
-
-        out0 = torch.sigmoid(out0)
         return out0

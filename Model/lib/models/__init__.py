@@ -49,6 +49,8 @@ from .PMFSNet import PMFSNet
 from .LiSANet import LiSANet
 from .LiSANetMT import LiSANetMT
 from .EGEUNet import EGEUNet
+from .BreastCancerMT import BreastCancerMT
+from .MBDCNN import MBDCNN
 from .ResNet50 import ResNet50
 from .DenseNet121 import DenseNet121
 from .EfficientNetV2 import EfficientNetV2
@@ -201,8 +203,19 @@ def get_model_optimizer_lr_scheduler(opt):
         elif opt["model_name"] == "UNet":
             model = UNet(n_channels=opt["in_channels"], n_classes=opt["seg_classes"])
 
-        elif opt["model_name"] == "EGEUNet":
-            model = EGEUNet(input_channels=opt["in_channels"], num_classes=2)
+        elif opt["model_name"] == "BreastCancerMT":
+            model = BreastCancerMT(
+                in_channels=opt["in_channels"],
+                seg_out_channels=opt["seg_classes"],
+                cls_out_channels=opt["cls_classes"]
+            )
+
+        elif opt["model_name"] == "MBDCNN":
+            model = MBDCNN(
+                in_channels=opt["in_channels"],
+                seg_out_channels=opt["seg_classes"] if opt["seg_classes"] is not None else 2,
+                cls_out_channels=opt["cls_classes"] if opt["cls_classes"] is not None else 7
+            )
         
         elif opt["model_name"] == "ResNet50":
             model = ResNet50(num_classes=opt["cls_classes"], pretrained=True)
@@ -460,6 +473,20 @@ def get_model(opt):
 
         elif opt["model_name"] == "EGEUNet":
             model = EGEUNet(input_channels=opt["in_channels"], num_classes=2)
+
+        elif opt["model_name"] == "BreastCancerMT":
+            model = BreastCancerMT(
+                in_channels=opt["in_channels"],
+                seg_out_channels=opt["seg_classes"],
+                cls_out_channels=opt["cls_classes"]
+            )
+
+        elif opt["model_name"] == "MBDCNN":
+            model = MBDCNN(
+                in_channels=opt["in_channels"],
+                seg_out_channels=opt["seg_classes"] if opt["seg_classes"] is not None else 2,
+                cls_out_channels=opt["cls_classes"] if opt["cls_classes"] is not None else 7
+            )
 
         elif opt["model_name"] == "ResNet50":
             model = ResNet50(num_classes=opt["cls_classes"], pretrained=True)
