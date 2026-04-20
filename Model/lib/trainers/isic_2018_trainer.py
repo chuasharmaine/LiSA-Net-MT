@@ -199,6 +199,17 @@ class ISIC2018Trainer:
             
             log_str = log_fmt.format(*log_items)
             print(log_str)
+            # save checkpoint every N epochs
+            if (epoch + 1) % self.save_epoch_freq == 0 and not self.opt["optimize_params"]:
+                self.save(epoch, valid_AUC if self.opt["classification"] else valid_JI,
+                        self.best_metric_cls if self.opt["classification"] else self.best_metric_seg,
+              type="normal")
+            # always save last epoch
+            if epoch == self.end_epoch - 1 and not self.opt["optimize_params"]:
+                self.save(epoch, valid_AUC if self.opt["classification"] else valid_JI,
+                        self.best_metric_cls if self.opt["classification"] else self.best_metric_seg,
+                        type="last")
+                
             if not self.opt["optimize_params"]:
                 utils.pre_write_txt(log_str, self.log_txt_path)
 
@@ -320,7 +331,7 @@ class ISIC2018Trainer:
 
                 self.calculate_metric_and_update_statistcs(
                     cls_pred.detach().cpu(),
-                    cls_target_idx,
+                    cls_target_idx.detach().cpu(),
                     len(input_tensor),
                     loss=total_loss.detach() if cls_loss is not None and (seg_out is None or seg_target is None) else None,
                     mode="train"
@@ -397,7 +408,7 @@ class ISIC2018Trainer:
                     cls_prob = torch.softmax(cls_out, dim=1)
                     cls_pred = torch.argmax(cls_out, dim=1)
 
-                    self.metric_valid["AUC_ROC"].update(cls_prob.detach().cpu(), cls_target_idx.cpu())
+                    self.metric_valid["AUC_ROC"].update(cls_prob.detach().cpu(), cls_target_idx.detach().cpu())
                     self.metric_valid["F1_MACRO"].update(cls_out.detach().cpu(), cls_target_idx.detach().cpu())
 
                     self.calculate_metric_and_update_statistcs(
@@ -419,8 +430,6 @@ class ISIC2018Trainer:
                 self.save(epoch, cur_JI, self.best_metric_seg, type="best_seg")
 
     def calculate_metric_and_update_statistcs(self, output, target, cur_batch_size, loss=None, mode="train"):
-        output = output.detach().cpu()
-        target = target.detach().cpu()
         is_seg_output = self.opt["segmentation"] and output.ndim == 4
         # check which task
         if is_seg_output:
@@ -435,8 +444,6 @@ class ISIC2018Trainer:
         for i, class_name in self.opt["index_to_class_dict"].items():
             if i < len(mask) and mask[i] == 1:
                 self.statistics_dict[mode]["class_count"][class_name] += cur_batch_size
-        if loss is not None and mode == "train":
-            self.statistics_dict[mode]["loss"] += loss.item() * cur_batch_size
         for metric_name, metric_func in self.metric.items():
             if is_seg_output and metric_name in ["ACC_CLS", "F1_MACRO", "AUC_ROC"]:
                 continue
@@ -555,7 +562,9 @@ class ISIC2018Trainer:
     def save(self, epoch, metric, best_metric, type="normal"):
         state = {
             "epoch": epoch,
-            "best_metric": best_metric,
+            "best_metric_seg": self.best_metric_seg,
+            "best_metric_cls": self.best_metric_cls,
+            "model": self.model.state_dict(),
             "optimizer": self.optimizer.state_dict(),
             "lr_scheduler": self.lr_scheduler.state_dict()
         }
@@ -574,39 +583,32 @@ class ISIC2018Trainer:
 
     def load(self):
         if self.opt["resume"] is not None:
-            if self.opt["pretrain"] is None:
-                raise RuntimeError("Training weights must be specified to continue training")
-
-            resume_state_dict = torch.load(self.opt["resume"], map_location=lambda storage, loc: storage.cuda(self.device))
-            self.start_epoch = resume_state_dict["epoch"] + 1
-            self.best_metric = resume_state_dict["best_metric"]
-            self.optimizer.load_state_dict(resume_state_dict["optimizer"])
-            self.lr_scheduler.load_state_dict(resume_state_dict["lr_scheduler"])
-
+            checkpoint = torch.load(self.opt["resume"],map_location=lambda storage, loc: storage.cuda(self.device))
+            self.start_epoch = checkpoint["epoch"] + 1
+            self.best_metric_seg = checkpoint.get("best_metric_seg", 0.0)
+            self.best_metric_cls = checkpoint.get("best_metric_cls", 0.0)
+            self.model.load_state_dict(checkpoint["model"], strict=True)
+            self.optimizer.load_state_dict(checkpoint["optimizer"])
+            self.lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
+            print(
+                f"Resumed training from epoch {self.start_epoch}, "
+                f"best_seg={self.best_metric_seg:.4f}, best_cls={self.best_metric_cls:.4f}"
+            )
+            return
+        
+        if self.opt["pretrain"] is not None:
             pretrain_state_dict = torch.load(self.opt["pretrain"], map_location=lambda storage, loc: storage.cuda(self.device))
             model_state_dict = self.model.state_dict()
             load_count = 0
             for param_name in model_state_dict.keys():
-                if (param_name in pretrain_state_dict) and (model_state_dict[param_name].size() == pretrain_state_dict[param_name].size()):
+                if (param_name in pretrain_state_dict) and (model_state_dict[param_name].shape == pretrain_state_dict[param_name].shape):
                     model_state_dict[param_name].copy_(pretrain_state_dict[param_name])
                     load_count += 1
             self.model.load_state_dict(model_state_dict, strict=True)
             print("{:.2f}% of model parameters successfully loaded with training weights".format(100 * load_count / len(model_state_dict)))
             if not self.opt["optimize_params"]:
                 utils.pre_write_txt("{:.2f}% of model parameters successfully loaded with training weights".format(100 * load_count / len(model_state_dict)), self.log_txt_path)
-        else:
-            if self.opt["pretrain"] is not None:
-                pretrain_state_dict = torch.load(self.opt["pretrain"], map_location=lambda storage, loc: storage.cuda(self.device))
-                model_state_dict = self.model.state_dict()
-                load_count = 0
-                for param_name in model_state_dict.keys():
-                    if (param_name in pretrain_state_dict) and (model_state_dict[param_name].size() == pretrain_state_dict[param_name].size()):
-                        model_state_dict[param_name].copy_(pretrain_state_dict[param_name])
-                        load_count += 1
-                self.model.load_state_dict(model_state_dict, strict=True)
-                print("{:.2f}% of model parameters successfully loaded with training weights".format(100 * load_count / len(model_state_dict)))
-                if not self.opt["optimize_params"]:
-                    utils.pre_write_txt("{:.2f}% of model parameters successfully loaded with training weights".format(100 * load_count / len(model_state_dict)), self.log_txt_path)
+            return
 
     def log_training_progress(self, epoch, batch_idx):
         avg_total_loss = self.statistics_dict['train']['loss'] / max(1, self.statistics_dict['train']['count'])
