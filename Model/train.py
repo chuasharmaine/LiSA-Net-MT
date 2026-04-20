@@ -32,7 +32,10 @@ params_ISIC_2018 = {
     # —————————————————————————————————————————————    Data Loading     ——————————————————————————————————————————————————————
     "dataset_name": "ISIC-2018",
     "dataset_path": r"./datasets/ISIC-2018",
-    "batch_size": 32,
+    # "batch_size": 32,
+    # "num_workers": 2,
+    # for multitask
+    "batch_size": 24,
     "num_workers": 2,
     # for testing on CPU
     # "batch_size": 2,

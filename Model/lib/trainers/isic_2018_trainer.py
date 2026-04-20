@@ -332,6 +332,7 @@ class ISIC2018Trainer:
     def valid_epoch(self, epoch):
 
         self.model.eval()
+        cur_AUC = 0.0
 
         if "AUC_ROC" in self.metric_valid:
             self.metric_valid["AUC_ROC"].reset()
@@ -408,7 +409,7 @@ class ISIC2018Trainer:
                     )
             valid_count = self.statistics_dict["valid"]["count"]
             cur_JI = self.statistics_dict["valid"]["JI_sum"] / valid_count if valid_count > 0 else 0.0
-            cur_AUC = self.metric_valid["AUC_ROC"].compute()
+            cur_AUC = self.metric_valid["AUC_ROC"].compute() if self.opt["classification"] else 0.0
 
             if cur_AUC > self.best_metric_cls and not self.opt["optimize_params"]:
                 self.best_metric_cls = cur_AUC
@@ -420,7 +421,7 @@ class ISIC2018Trainer:
     def calculate_metric_and_update_statistcs(self, output, target, cur_batch_size, loss=None, mode="train"):
         output = output.detach().cpu()
         target = target.detach().cpu()
-        is_seg_output = output.ndim == 4
+        is_seg_output = self.opt["segmentation"] and output.ndim == 4
         # check which task
         if is_seg_output:
             mask = torch.zeros(self.seg_classes)

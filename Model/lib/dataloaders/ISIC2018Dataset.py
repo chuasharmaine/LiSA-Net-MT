@@ -87,6 +87,10 @@ class ISIC2018Dataset(Dataset):
         
         img_path = os.path.join(self.root, "images", image_name + ".jpg")
         image = cv2.imread(img_path)
+
+        if image is None:
+            raise FileNotFoundError(f"cannot find: {img_path}")
+        
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
         mask = None
@@ -96,11 +100,12 @@ class ISIC2018Dataset(Dataset):
             mask[mask == 255] = 1 
         
         # apply transforms
-        if self.segmentation:
+        if self.segmentation and self.classification:
             image, mask = self.transforms_dict[self.mode](image, mask)
-            mask = mask.squeeze(0).long()
-        else:
-            image = self.transforms_dict[self.mode](image, None)[0]
+        elif self.segmentation:
+            image, mask = self.transforms_dict[self.mode](image, mask)
+        elif self.classification:
+            image, _ = self.transforms_dict[self.mode](image, np.zeros_like(image[:,:,0]))
 
         label = None
         if self.classification:
