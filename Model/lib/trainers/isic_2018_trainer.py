@@ -287,16 +287,12 @@ class ISIC2018Trainer:
             else:
                 cls_loss = None
 
-            if self.opt["segmentation"] and self.opt["classification"]:
-                seg_loss = seg_loss * self.opt.get("seg_weight", 1.0)
-                cls_loss = cls_loss * self.opt.get("cls_weight", 1.0)
-            
             total_loss = None
             if seg_loss is not None:
-                total_loss = seg_loss if total_loss is None else total_loss + seg_loss
+                total_loss = 0.5 * seg_loss if total_loss is None else total_loss +  0.5 * seg_loss
 
             if cls_loss is not None:
-                total_loss = cls_loss if total_loss is None else total_loss + cls_loss
+                total_loss = 0.5 * cls_loss if total_loss is None else total_loss + 0.5 * cls_loss
 
             if seg_loss_value is not None:
                 self.statistics_dict["train"]["seg_loss"] += seg_loss_value * len(input_tensor)
@@ -307,7 +303,11 @@ class ISIC2018Trainer:
             if total_loss is not None:
                 self.statistics_dict["train"]["loss"] += total_loss.item() * len(input_tensor)
                 self.optimizer.zero_grad()
+                if torch.isnan(total_loss) or torch.isinf(total_loss):
+                    print("Bad loss detected")
+                    continue
                 total_loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                 self.optimizer.step()
             else:
                 print("WARNING: no loss computed for this batch!")
