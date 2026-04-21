@@ -430,6 +430,8 @@ class ISIC2018Trainer:
                 self.save(epoch, cur_JI, self.best_metric_seg, type="best_seg")
 
     def calculate_metric_and_update_statistcs(self, output, target, cur_batch_size, loss=None, mode="train"):
+        output = output.detach().cpu()
+        target = target.detach().cpu()
         is_seg_output = self.opt["segmentation"] and output.ndim == 4
         # check which task
         if is_seg_output:
