@@ -97,6 +97,8 @@ class ISIC2018Dataset(Dataset):
         if self.segmentation:
             mask_path = os.path.join(self.root, "masks", image_name + "_segmentation.png")
             mask = cv2.imread(mask_path, 0)
+            if mask is None:
+                raise RuntimeError(f"Missing mask: {mask_path}")
             mask[mask == 255] = 1 
         
         # apply transforms

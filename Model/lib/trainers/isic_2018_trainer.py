@@ -242,6 +242,13 @@ class ISIC2018Trainer:
             if cls_target is not None:
                 cls_target = cls_target.to(self.device)
 
+            if torch.isnan(input_tensor).any():
+                print("NaN in input image")
+                continue
+            if seg_target is not None and torch.isnan(seg_target.float()).any():
+                print("NaN in mask")
+                continue
+
             output = self.model(input_tensor)
             seg_out = None
             cls_out = None
@@ -276,13 +283,6 @@ class ISIC2018Trainer:
 
             if cls_out is not None and cls_target_idx is not None and "classification" in self.loss_function:
                 cls_loss = self.cls_loss_function(cls_out, cls_target_idx)
-
-                if self.opt["segmentation"] and self.opt["classification"]:
-                    if not self.seg_guided_cls:
-                        cls_out = cls_out  # keep independent
-                    else:
-                        pass
-
                 cls_loss_value = cls_loss.item()
             else:
                 cls_loss = None
