@@ -298,6 +298,9 @@ class ISIC2018Trainer:
 
             # only backward if total_loss is a tensor
             if total_loss is not None:
+                if torch.isnan(total_loss) or torch.isinf(total_loss):
+                    print("bad loss. skipping backward")
+                    continue
                 self.statistics_dict["train"]["loss"] += total_loss.item() * len(input_tensor)
                 self.optimizer.zero_grad()
                 if torch.isnan(total_loss) or torch.isinf(total_loss):
