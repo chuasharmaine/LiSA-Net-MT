@@ -32,11 +32,11 @@ params_ISIC_2018 = {
     # —————————————————————————————————————————————    Data Loading     ——————————————————————————————————————————————————————
     "dataset_name": "ISIC-2018",
     "dataset_path": r"./datasets/ISIC-2018",
-    # "batch_size": 32,
-    # "num_workers": 2,
-    # for multitask
-    "batch_size": 24,
+    "batch_size": 32,
     "num_workers": 2,
+    # for multitask
+    # "batch_size": 16,
+    # "num_workers": 2,
     # for testing on CPU
     # "batch_size": 2,
     # "num_workers": 0,
@@ -57,7 +57,7 @@ params_ISIC_2018 = {
         5: "DF", # Dermatofibroma
         6: "VASC"  # Vascular lesion
     },
-    "resume": None,
+    "resume": "./runs/2026-04-23-10-18-10_UNet_ISIC-2018/checkpoints/0036_UNet_0.7496.state",
     "pretrain": None,
     # ——————————————————————————————————————————————    Optimizer     ——————————————————————————————————————————————————————
     "optimizer_name": "AdamW",
@@ -94,8 +94,8 @@ params_ISIC_2018 = {
     "best_metric": 0,
     "terminal_show_freq": 20,
     "save_epoch_freq": 20,
-    "seg_weight": 0.7,
-    "cls_weight": 0.3,
+    "seg_weight": 0.5,
+    "cls_weight": 0.5,
 }
  
 def parse_args():

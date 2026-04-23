@@ -266,7 +266,7 @@ class ISIC2018Trainer:
             cls_loss_value = None
 
             if seg_out is not None and seg_target is not None and "segmentation" in self.loss_function:
-                seg_target = seg_target.long()
+                seg_target = seg_target.float()
                 seg_loss = self.loss_function["segmentation"](seg_out, seg_target)
                 seg_loss_value = seg_loss.item()
             else:
@@ -585,7 +585,7 @@ class ISIC2018Trainer:
 
     def load(self):
         if self.opt["resume"] is not None:
-            checkpoint = torch.load(self.opt["resume"],map_location=lambda storage, loc: storage.cuda(self.device))
+            checkpoint = torch.load(self.opt["resume"],map_location=self.device, weights_only=False)
             self.start_epoch = checkpoint["epoch"] + 1
             self.best_metric_seg = checkpoint.get("best_metric_seg", 0.0)
             self.best_metric_cls = checkpoint.get("best_metric_cls", 0.0)
