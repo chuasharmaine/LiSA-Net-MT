@@ -38,11 +38,8 @@ class ISIC2018Trainer:
         self.best_metric_seg = 0.0
         self.best_metric_cls = 0.0
         self.device = opt["device"]
-        self.seg_classes = opt.get("seg_classes", 1)
-        self.cls_classes = opt.get("cls_classes", 7)
-
-        self.seg_guided_cls = False
-        self.seg_guided_cls = opt.get("seg_guided_cls", False)
+        self.seg_classes = opt.get("seg_classes", 1) if opt.get("segmentation") else 0
+        self.cls_classes = opt.get("cls_classes", 7) if opt.get("classification") else 0
 
         # Segmentation metrics
         if self.opt["segmentation"]:
@@ -436,7 +433,7 @@ class ISIC2018Trainer:
         # check which task
         if is_seg_output:
             mask = torch.zeros(self.seg_classes)
-        else:
+        elif self.opt["classification"]:
             mask = torch.zeros(self.cls_classes)
         unique_index = torch.unique(target).int()
         for index in unique_index:
