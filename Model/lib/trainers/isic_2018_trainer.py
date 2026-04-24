@@ -302,13 +302,10 @@ class ISIC2018Trainer:
             # only backward if total_loss is a tensor
             if total_loss is not None:
                 if torch.isnan(total_loss) or torch.isinf(total_loss):
-                    print("bad loss. skipping backward")
+                    print("Bad loss detected")
                     continue
                 self.statistics_dict["train"]["loss"] += total_loss.item() * len(input_tensor)
                 self.optimizer.zero_grad()
-                if torch.isnan(total_loss) or torch.isinf(total_loss):
-                    print("Bad loss detected")
-                    continue
                 total_loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                 self.optimizer.step()
@@ -318,21 +315,21 @@ class ISIC2018Trainer:
             # update metrics
             if seg_out is not None and seg_target is not None:
                 self.calculate_metric_and_update_statistcs(
-                    seg_out.detach(),
-                    seg_target.detach(),
+                    seg_out.detach().cpu().float(),
+                    seg_target.detach().cpu().float(),
                     len(input_tensor),
                     mode="train"
                 )
 
             if cls_out is not None and cls_target is not None:
-                cls_prob = torch.softmax(cls_out, dim=1)
-                cls_pred = torch.argmax(cls_out, dim=1)
+                cls_prob = torch.softmax(cls_out.detach(), dim=1)
+                cls_pred = torch.argmax(cls_out.detach(), dim=1)
 
                 self.metric_train["F1_MACRO"].update(cls_out.detach().cpu(), cls_target_idx.detach().cpu())
                 self.metric_train["AUC_ROC"].update(cls_prob.detach().cpu(), cls_target_idx.detach().cpu())
 
                 self.calculate_metric_and_update_statistcs(
-                    cls_pred.detach().cpu(),
+                    cls_pred.cpu(),
                     cls_target_idx.detach().cpu(),
                     len(input_tensor),
                     mode="train"
