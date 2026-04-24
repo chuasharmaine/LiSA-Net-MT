@@ -91,12 +91,8 @@ class ISIC2018Trainer:
     def training(self):
         for epoch in range(self.start_epoch, self.end_epoch):
             self.reset_statistics_dict()
-
-            if "F1_MACRO" in self.metric_train:
-                self.metric_train["F1_MACRO"].reset()
-
             self.train_epoch(epoch)
-
+            torch.cuda.empty_cache()
             self.valid_epoch(epoch)
 
             train_class_IoU = np.nan_to_num(self.statistics_dict["train"].get("total_area_intersect", 0.0) / self.statistics_dict["train"].get("total_area_union", 1.0))
@@ -219,6 +215,11 @@ class ISIC2018Trainer:
     def train_epoch(self, epoch):
 
         self.model.train()
+        
+        if "AUC_ROC" in self.metric_train:
+            self.metric_train["AUC_ROC"].reset()
+        if "F1_MACRO" in self.metric_train:
+            self.metric_train["F1_MACRO"].reset()
 
         for batch_idx, batch in enumerate(self.train_data_loader):
 
@@ -235,7 +236,7 @@ class ISIC2018Trainer:
 
             input_tensor = input_tensor.to(self.device)
             if seg_target is not None:
-                seg_target = seg_target.to(self.device)
+                seg_target = seg_target.to(self.device, dtype=torch.float32)
             if cls_target is not None:
                 cls_target = cls_target.to(self.device)
 
@@ -245,6 +246,8 @@ class ISIC2018Trainer:
             if seg_target is not None and torch.isnan(seg_target.float()).any():
                 print("NaN in mask")
                 continue
+
+            self.statistics_dict["train"]["count"] += len(input_tensor)
 
             output = self.model(input_tensor)
             seg_out = None
@@ -315,10 +318,9 @@ class ISIC2018Trainer:
             # update metrics
             if seg_out is not None and seg_target is not None:
                 self.calculate_metric_and_update_statistcs(
-                    seg_out,
-                    seg_target,
+                    seg_out.detach(),
+                    seg_target.detach(),
                     len(input_tensor),
-                    loss=total_loss.detach() if seg_loss is not None else None,
                     mode="train"
                 )
 
@@ -333,7 +335,6 @@ class ISIC2018Trainer:
                     cls_pred.detach().cpu(),
                     cls_target_idx.detach().cpu(),
                     len(input_tensor),
-                    loss=total_loss.detach() if cls_loss is not None and (seg_out is None or seg_target is None) else None,
                     mode="train"
                 )
 
@@ -365,9 +366,10 @@ class ISIC2018Trainer:
 
                 input_tensor = input_tensor.to(self.device)
                 if seg_target is not None:
-                    seg_target = seg_target.to(self.device)
+                    seg_target = seg_target.to(self.device, dtype=torch.float32)
                 if cls_target is not None:
                     cls_target = cls_target.to(self.device)
+                self.statistics_dict["valid"]["count"] += len(input_tensor)
 
                 output = self.model(input_tensor)
 
@@ -438,11 +440,12 @@ class ISIC2018Trainer:
             mask = torch.zeros(self.seg_classes)
         elif self.opt["classification"]:
             mask = torch.zeros(self.cls_classes)
+        else:
+            mask = torch.zeros(1)
         unique_index = torch.unique(target).int()
         for index in unique_index:
             if index < len(mask):
                 mask[index] = 1
-        self.statistics_dict[mode]["count"] += cur_batch_size
         for i, class_name in self.opt["index_to_class_dict"].items():
             if i < len(mask) and mask[i] == 1:
                 self.statistics_dict[mode]["class_count"][class_name] += cur_batch_size

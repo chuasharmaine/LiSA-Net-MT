@@ -34,9 +34,6 @@ params_ISIC_2018 = {
     "dataset_path": r"./datasets/ISIC-2018",
     "batch_size": 32,
     "num_workers": 2,
-    # for multitask
-    # "batch_size": 16,
-    # "num_workers": 2,
     # for testing on CPU
     # "batch_size": 2,
     # "num_workers": 0,
@@ -57,7 +54,7 @@ params_ISIC_2018 = {
         5: "DF", # Dermatofibroma
         6: "VASC"  # Vascular lesion
     },
-    "resume": "./runs/2026-04-23-10-18-10_UNet_ISIC-2018/checkpoints/0036_UNet_0.7496.state",
+    "resume": None,
     "pretrain": None,
     # ——————————————————————————————————————————————    Optimizer     ——————————————————————————————————————————————————————
     "optimizer_name": "AdamW",
@@ -132,7 +129,7 @@ def main():
 
     # launch initialization
     os.environ["CUDA_VISIBLE_DEVICES"] = params["CUDA_VISIBLE_DEVICES"]
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
     utils.reproducibility(params["seed"], params["deterministic"], params["benchmark"])
     
     # for testing on CPU
@@ -173,6 +170,7 @@ def main():
         params["lr_cls"] = 0.00003
         params["lr_seg"] = 0.00005
         params["learning_rate"] = 0.00005
+        params["batch_size"] = 16
 
     if args.model == "EGEUNet" and params["segmentation"]:
         params["learning_rate"] = 0.001
