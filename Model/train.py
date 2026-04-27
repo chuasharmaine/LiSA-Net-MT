@@ -129,10 +129,10 @@ def main():
 
     # launch initialization
     os.environ["CUDA_VISIBLE_DEVICES"] = params["CUDA_VISIBLE_DEVICES"]
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
 
     # for debugging
-    os.environ["CUDA_LAUNCH_BLOCKING"] = 1
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
     utils.reproducibility(params["seed"], params["deterministic"], params["benchmark"])
     
