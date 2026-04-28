@@ -90,7 +90,7 @@ params_ISIC_2018 = {
     # "end_epoch": 1,
     "best_metric": 0,
     "terminal_show_freq": 20,
-    "save_epoch_freq": 20,
+    "save_epoch_freq": 5 ,
     "seg_weight": 0.5,
     "cls_weight": 0.5,
 }

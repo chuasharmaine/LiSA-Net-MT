@@ -9,10 +9,10 @@ echo.
 echo [TRAINING] Segmentation Models...
 
 
-python ./train.py --dataset ISIC-2018 --model UNet --dimension 2d --scaling_version BASIC --epoch 150 --task segmentation || echo [ERROR] UNet failed, starting next
+@REM python ./train.py --dataset ISIC-2018 --model UNet --dimension 2d --scaling_version BASIC --epoch 150 --task segmentation || echo [ERROR] UNet failed, starting next
 
 
-python ./train.py --dataset ISIC-2018 --model PMFSNet --dimension 2d --scaling_version BASIC --epoch 150 --task segmentation || echo [ERROR] PMFSNet failed, starting next
+@REM python ./train.py --dataset ISIC-2018 --model PMFSNet --dimension 2d --scaling_version BASIC --epoch 150 --task segmentation || echo [ERROR] PMFSNet failed, starting next
 
 
 python ./train.py --dataset ISIC-2018 --model EGEUNet --dimension 2d --scaling_version BASIC --epoch 150 --task segmentation || echo [ERROR] EGEUNet failed, starting next
