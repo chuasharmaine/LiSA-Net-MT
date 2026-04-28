@@ -109,6 +109,9 @@ class ISIC2018Dataset(Dataset):
         elif self.classification:
             image, _ = self.transforms_dict[self.mode](image, np.zeros_like(image[:,:,0]))
 
+        if self.segmentation:
+            mask = (mask > 0).float()
+
         label = None
         if self.classification:
             label_list = self.cls_labels_dict[image_name]

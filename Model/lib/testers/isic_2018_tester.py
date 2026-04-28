@@ -15,6 +15,7 @@ from tqdm import tqdm
 import torch
 
 from torchvision import transforms
+from lib.explainability.gradcam import GradCam
 
 
 class ISIC2018Tester:
@@ -47,6 +48,13 @@ class ISIC2018Tester:
             image = image.to(self.device)
             output = self.model(image)
 
+        # gradcam
+        if not hasattr(self, "gradcam"):
+            self.gradcam = GradCam(self.model)
+        
+        gradcam_img = image.clone().requires_grad_(True)
+        raw_cam, vis_cam = self.gradcam(gradcam_img)
+        gradcam = vis_cam[0]
 
         if isinstance(output, dict):
             seg_out = output.get("segmentation") if self.opt.get("segmentation") else None

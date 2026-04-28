@@ -203,6 +203,9 @@ def get_model_optimizer_lr_scheduler(opt):
         elif opt["model_name"] == "UNet":
             model = UNet(n_channels=opt["in_channels"], n_classes=opt["seg_classes"])
 
+        elif opt["model_name"] == "EGEUNet":
+            model = EGEUNet(input_channels=opt["in_channels"], num_classes=opt["seg_classes"])
+
         elif opt["model_name"] == "BreastCancerMT":
             model = BreastCancerMT(
                 in_channels=opt["in_channels"],
@@ -472,7 +475,7 @@ def get_model(opt):
             model = UNet(n_channels=opt["in_channels"], n_classes=opt["seg_classes"])
 
         elif opt["model_name"] == "EGEUNet":
-            model = EGEUNet(input_channels=opt["in_channels"], num_classes=2)
+            model = EGEUNet(input_channels=opt["in_channels"], num_classes=opt["seg_classes"])
 
         elif opt["model_name"] == "BreastCancerMT":
             model = BreastCancerMT(
