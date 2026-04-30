@@ -30,16 +30,16 @@ echo.
 echo [TRAINING] Classification Models...
 
 
-python ./train.py --dataset ISIC-2018 --model ResNet50 --dimension 2d --scaling_version BASIC --epoch 150 --task classification || echo [ERROR] ResNet50 failed, starting next
+@REM python ./train.py --dataset ISIC-2018 --model ResNet50 --dimension 2d --scaling_version BASIC --epoch 150 --task classification || echo [ERROR] ResNet50 failed, starting next
 
 
-python ./train.py --dataset ISIC-2018 --model DenseNet121 --dimension 2d --scaling_version BASIC --epoch 150 --task classification || echo [ERROR] DenseNet121 failed, starting next
+@REM python ./train.py --dataset ISIC-2018 --model DenseNet121 --dimension 2d --scaling_version BASIC --epoch 150 --task classification || echo [ERROR] DenseNet121 failed, starting next
 
 
-python ./train.py --dataset ISIC-2018 --model EfficientNetV2 --dimension 2d --scaling_version BASIC --epoch 150 --task classification || echo [ERROR] EfficientNetV2 failed, starting next
+@REM python ./train.py --dataset ISIC-2018 --model EfficientNetV2 --dimension 2d --scaling_version BASIC --epoch 150 --task classification || echo [ERROR] EfficientNetV2 failed, starting next
 
 
-python ./train.py --dataset ISIC-2018 --model MobileNetV3 --dimension 2d --scaling_version BASIC --epoch 150 --task classification || echo [ERROR] MobileNetV3 failed, starting next
+@REM python ./train.py --dataset ISIC-2018 --model MobileNetV3 --dimension 2d --scaling_version BASIC --epoch 150 --task classification || echo [ERROR] MobileNetV3 failed, starting next
 
 
 python ./train.py --dataset ISIC-2018 --model LiSANetMT --dimension 2d --scaling_version BASIC --epoch 150 --task classification || echo [ERROR] LiSANetMT failed, starting next

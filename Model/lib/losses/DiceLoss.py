@@ -1,4 +1,6 @@
 from lib.utils import *
+import torch
+import torch.nn as nn
 
 
 class DiceLoss(nn.Module):
@@ -12,13 +14,13 @@ class DiceLoss(nn.Module):
         self.weight = weight
         self.mode = mode
         
-        if sigmoid_normalization:
-            self.normalization = nn.Sigmoid()
-        else:
-            self.normalization = nn.Softmax(dim=1)
+        self.normalization = nn.Sigmoid()
 
     def dice(self, input, target):
-        target = target.unsqueeze(1).float()
+        if target.ndim == 3:        
+            target = target.unsqueeze(1)
+
+        target = target.float()
 
         assert input.size() == target.size(), "Inconsistency of dimensions between predicted and labeled images after one-hot processing in dice loss"
 
