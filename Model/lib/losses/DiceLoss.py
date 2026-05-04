@@ -1,6 +1,7 @@
 from lib.utils import *
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class DiceLoss(nn.Module):
@@ -8,19 +9,21 @@ class DiceLoss(nn.Module):
     For multi-class segmentation `weight` parameter can be used to assign different weights per class.
     """
 
-    def __init__(self, classes=1, weight=None, sigmoid_normalization=True, mode="extension"):
+    def __init__(self, classes=2, weight=None, sigmoid_normalization=True, mode="extension"):
         super(DiceLoss, self).__init__()
         self.classes = classes
         self.weight = weight
         self.mode = mode
         
-        self.normalization = nn.Sigmoid()
+        self.normalization = nn.Softmax(dim=1)
 
     def dice(self, input, target):
-        if target.ndim == 3:        
-            target = target.unsqueeze(1)
+        if target.ndim == 4 and target.size(1) == 1:
+            target = target.squeeze(1)
 
-        target = target.float()
+        target = target.long()
+
+        target = torch.nn.functional.one_hot(target, num_classes=self.classes).permute(0, 3, 1, 2).float()  # (B, 2, H, W)
 
         assert input.size() == target.size(), "Inconsistency of dimensions between predicted and labeled images after one-hot processing in dice loss"
 
