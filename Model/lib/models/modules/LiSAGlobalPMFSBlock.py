@@ -108,7 +108,7 @@ class GlobalPMFSBlock_AP_Separate(nn.Module):
             ch_Q = ch_Q.reshape(bs, -1, d * h * w)  # bs, self.ch_in, d*h*w
             ch_K = ch_K.reshape(bs, -1, 1)  # bs, d*h*w, 1
             ch_K = self.ch_softmax(ch_K)  # bs, d*h*w, 1
-            Z = torch.matmul(ch_Q, ch_K).unsqueeze(-1).unsqueeze(-1)  # bs, self.ch_in, 1, 1, 1
+            Z = torch.matmul(ch_Q, ch_K).unsqueeze(-1).unsqueeze(-1)/ (self.ch_in ** 0.5)  # bs, self.ch_in, 1, 1, 1
             ch_score = self.sigmoid(self.ch_layer_norm(self.ch_score_conv(Z)))  # bs, self.ch_in, 1, 1, 1
             ch_out = ch_V * ch_score  # bs, self.ch_in, d, h, w
 
@@ -119,7 +119,7 @@ class GlobalPMFSBlock_AP_Separate(nn.Module):
             sp_K = sp_K.reshape(bs, self.br, self.ch_k, d, h, w).permute(0, 2, 3, 4, 5, 1).mean(-1).mean(-1).mean(-1).mean(-1).reshape(bs, 1, self.ch_k)  # bs, 1, self.ch_k
             sp_V = sp_V.reshape(bs, self.br, self.ch_k, d, h, w).permute(0, 2, 3, 4, 5, 1)  # bs, self.ch_v, d, h, w, self.br
             sp_K = self.sp_softmax(sp_K)  # bs, 1, self.ch_k
-            Z = torch.matmul(sp_K, sp_Q).reshape(bs, 1, d, h, w, self.br)  # bs, 1, d, h, w, self.br
+            Z = torch.matmul(sp_K, sp_Q).reshape(bs, 1, d, h, w, self.br) / (self.ch_k ** 0.5)  # bs, 1, d, h, w, self.br
             sp_score = self.sigmoid(Z)  # bs, 1, d, h, w, self.br
             sp_out = sp_V * sp_score  # bs, self.ch_v, d, h, w, self.br
             sp_out = sp_out.permute(0, 5, 1, 2, 3, 4).reshape(bs, self.br * self.ch_v, d, h, w)  # bs, self.br*self.ch_v, d, h, w
@@ -135,7 +135,7 @@ class GlobalPMFSBlock_AP_Separate(nn.Module):
             ch_Q = ch_Q.reshape(bs, -1, h * w)  # bs, self.ch_in, h*w
             ch_K = ch_K.reshape(bs, -1, 1)  # bs, h*w, 1
             ch_K = self.ch_softmax(ch_K)  # bs, h*w, 1
-            Z = torch.matmul(ch_Q, ch_K).unsqueeze(-1)  # bs, self.ch_in, 1, 1
+            Z = torch.matmul(ch_Q, ch_K).unsqueeze(-1)/ (self.ch_in ** 0.5)  # bs, self.ch_in, 1, 1
             ch_score = self.sigmoid(self.ch_layer_norm(self.ch_score_conv(Z)))  # bs, self.ch_in, 1, 1
             ch_out = ch_V * ch_score  # bs, self.ch_in, h, w
 
@@ -146,7 +146,7 @@ class GlobalPMFSBlock_AP_Separate(nn.Module):
             sp_K = sp_K.reshape(bs, self.br, self.ch_k, h, w).permute(0, 2, 3, 4, 1).mean(-1).mean(-1).mean(-1).reshape(bs, 1, self.ch_k)  # bs, 1, self.ch_k
             sp_V = sp_V.reshape(bs, self.br, self.ch_k, h, w).permute(0, 2, 3, 4, 1)  # bs, self.ch_v, h, w, self.br
             sp_K = self.sp_softmax(sp_K)  # bs, 1, self.ch_k
-            Z = torch.matmul(sp_K, sp_Q).reshape(bs, 1, h, w, self.br)  # bs, 1, h, w, self.br
+            Z = torch.matmul(sp_K, sp_Q).reshape(bs, 1, h, w, self.br) / (self.ch_k ** 0.5)  # bs, 1, h, w, self.br
             sp_score = self.sigmoid(Z)  # bs, 1, h, w, self.br
             sp_out = sp_V * sp_score  # bs, self.ch_v, h, w, self.br
             sp_out = sp_out.permute(0, 4, 1, 2, 3).reshape(bs, self.br * self.ch_v, h, w)  # bs, self.br*self.ch_v, h, w
