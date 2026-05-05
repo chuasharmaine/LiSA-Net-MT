@@ -8,10 +8,12 @@
 import os
 import argparse
 from glob import glob
-
 import torch
+import matplotlib.pyplot as plt
+import numpy as np
 
 from lib import utils, dataloaders, models, metrics, testers
+from lib.explainability.gradcam import GradCam
 
 params_3D_CBCT_Tooth = {
     # ——————————————————————————————————————————————    Launch Initialization    —————————————————————————————————————————————————
@@ -325,9 +327,87 @@ def main():
         # Perform inference on each image
         for image_path in image_paths:
             print(f"Performing inference on image: {image_path}")
-            output_path = image_path.replace(".jpg", "_seg.png").replace(".png", "_seg.png")
-            tester.inference(image_path, output_path)
 
+            image = dataloaders.load_image(image_path, params)
+            image = image.unsqueeze(0).to(params["device"])
+            image.requires_grad = True
+
+            seg_out, cls_out = model(image)
+            probs = torch.softmax(cls_out, dim=1)
+            pred_class = torch.argmax(probs, dim=1).item()
+
+            cam_model = GradCam(model, target_layer)
+            cam = cam_model(cls_out, pred_class)
+
+            result = run_inference(model, image, params["device"])
+
+def run_inference(model, image, device, gt_mask=None):
+    model.eval()
+    image = image.to(device)
+    image.requires_grad = True
+
+    seg_out, cls_out = model(image)
+
+    probs = torch.softmax(cls_out, dim=1)[0]
+    pred_class = torch.argmax(probs).item()
+
+    seg_mask = torch.argmax(seg_out, dim=1)[0].detach().cpu()
+
+    # GRAD-CAM
+    cam_model = GradCam(model, target_layer=list(model.modules())[-2])
+    cam = cam_model(cls_out, pred_class)
+
+    cam = cam.detach().cpu().squeeze().numpy()
+
+    # normalize cam for display
+    cam = (cam - cam.min()) / (cam.max() + 1e-8)
+
+    class_names = [
+        "Melanoma",
+        "Basal Cell Carcinoma",
+        "Actinic Keratoses",
+        "Melanocytic Nevi",
+        "Benign Keratosis-like Lesions",
+        "Dermatofibroma",
+        "Vascular Lesions"
+    ]
+
+    print("\nPrediction Class:")
+    print(f"{class_names[pred_class]} — {probs[pred_class].item()*100:.2f}%")
+
+    print("\nBreakdown:")
+    for i, p in enumerate(probs):
+        print(f"{i+1}. {class_names[i]} — {p.item()*100:.2f}%")
+
+    fig, ax = plt.subplots(2, 3, figsize=(14, 8))
+
+    ax[0,0].imshow(image.detach().cpu().squeeze(), cmap="gray")
+    ax[0,0].set_title("Original Lesion")
+
+    ax[0,1].imshow(gt_mask.squeeze().cpu() if gt_mask is not None else seg_mask, cmap="gray")
+    ax[0,1].set_title("Ground Truth" if gt_mask is not None else "Seg Mask")
+
+    ax[0,2].imshow(seg_mask, cmap="gray")
+    ax[0,2].set_title("Prediction Mask")
+
+    ax[1,0].imshow(cam, cmap="jet")
+    ax[1,0].set_title("Grad-CAM")
+
+    ax[1,1].axis("off")
+    ax[1,1].set_title("SHAP (not implemented)")
+
+    ax[1,2].axis("off")
+    ax[1,2].set_title("LIME (not implemented)")
+
+    plt.tight_layout()
+    plt.show()
+
+    return {
+        "probs": probs,
+        "pred_class": pred_class,
+        "seg_mask": seg_mask,
+        "cam": cam
+    }
 
 if __name__ == '__main__':
     main()

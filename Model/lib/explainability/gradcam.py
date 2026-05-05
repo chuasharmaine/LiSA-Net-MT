@@ -9,80 +9,36 @@ Notes:
 - Added support for batch processing
 """
 
-import cv2
-import numpy as np
 import torch
 import torch.nn.functional as F
-from torch.autograd import Variable
-
 
 class GradCam:
-    def __init__(self, model):
-        self.model = model.eval()
-        self.feature = None
-        self.gradient = None
+    def __init__(self, model, target_layer):
+        self.model = model
+        self.gradients = None
+        self.activations = None
 
-    def save_gradient(self, grad):
-        self.gradient = grad
+        target_layer.register_forward_hook(self.forward_hook)
+        target_layer.register_full_backward_hook(self.backward_hook)
 
-    def __call__(self, x):
-        image_size = (x.size(-1), x.size(-2))
-        datas = Variable(x)
+    def forward_hook(self, module, input, output):
+        self.activations = output
 
-        raw_cams = []   # for evaluation
-        vis_cams = []   # for visualization
+    def backward_hook(self, module, grad_input, grad_output):
+        self.gradients = grad_output[0]
 
-        for i in range(datas.size(0)):
-            img = datas[i].data.cpu().numpy()
-            img = img - np.min(img)
-            if np.max(img) != 0:
-                img = img / np.max(img)
+    def __call__(self, cls_out, class_idx):
 
-            feature = datas[i].unsqueeze(0)
+        self.model.zero_grad()
 
-            for name, module in self.model.named_children():
-                if name == 'classifier':
-                    feature = feature.view(feature.size(0), -1)
-                feature = module(feature)
-                if name == 'features':
-                    feature.register_hook(self.save_gradient)
-                    self.feature = feature
+        score = cls_out[0, class_idx]
+        score.backward(retain_graph=True)
 
-            classes = torch.sigmoid(feature)
-            one_hot, _ = classes.max(dim=-1)
+        weights = self.gradients.mean(dim=(2, 3), keepdim=True)
+        cam = (weights * self.activations).sum(dim=1)
 
-            self.model.zero_grad()
-            one_hot.backward()
+        cam = torch.relu(cam)
+        cam = cam - cam.min()
+        cam = cam / (cam.max() + 1e-8)
 
-            weight = self.gradient.mean(dim=-1, keepdim=True).mean(dim=-2, keepdim=True)
-            cam = F.relu((weight * self.feature).sum(dim=1)).squeeze(0)
-
-            # Resize
-            cam = F.interpolate(cam.unsqueeze(0).unsqueeze(0),
-                                size=image_size[::-1],
-                                mode='bilinear',
-                                align_corners=False).squeeze()
-
-            cam = cam.detach().cpu().numpy()
-
-            # Normalize 
-            cam = cam - np.min(cam)
-            if np.max(cam) != 0:
-                cam = cam / np.max(cam)
-
-            # RAW CAM for metrics
-            raw_cams.append(torch.tensor(cam))
-
-            # VISUAL CAM for images
-            heat_map = cv2.applyColorMap(np.uint8(255 * cam), cv2.COLORMAP_JET)
-            overlay = heat_map + np.uint8(img.transpose(1, 2, 0) * 255)
-            overlay = overlay - np.min(overlay)
-            if np.max(overlay) != 0:
-                overlay = overlay / np.max(overlay)
-
-            vis_cams.append(torch.tensor(overlay).permute(2, 0, 1))  # (C,H,W)
-
-        raw_cams = torch.stack(raw_cams)   # (B, H, W)
-        vis_cams = torch.stack(vis_cams)   # (B, 3, H, W)
-
-        return raw_cams, vis_cams
+        return cam
