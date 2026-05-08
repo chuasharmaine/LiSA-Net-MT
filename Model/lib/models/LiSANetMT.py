@@ -22,7 +22,7 @@ class LiSANetMT(nn.Module):
     def __init__(self, in_channels=1, seg_out_channels=2, cls_out_channels=7, dim="3d", scaling_version="TINY",
                  basic_module=DownSampleWithLocalPMFSBlock,
                  global_module=GlobalPMFSBlock_AP_Separate,
-                 segmentation=True, classification=True):
+                 segmentation=True, classification=True, seg_guided_cls=False):
         super(LiSANetMT, self).__init__()
         
         self.segmentation = segmentation
@@ -32,7 +32,7 @@ class LiSANetMT(nn.Module):
         # toggle:
         #  - False for normal multitask (default)
         #  - True for segmentation-guided classification
-        self.seg_guided_cls = False 
+        self.seg_guided_cls = seg_guided_cls 
 
         if scaling_version == "BASIC":
             base_channels = [24, 48, 64]
