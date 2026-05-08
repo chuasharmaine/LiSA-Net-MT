@@ -12,6 +12,9 @@ import torch
 import matplotlib.pyplot as plt
 import numpy as np
 import torch.nn.functional as F
+import pandas as pd
+import cv2
+import lib.transforms.two as my_transforms
 
 from lib import utils, dataloaders, models, metrics, testers
 from lib.explainability.gradcam import GradCam
@@ -271,6 +274,17 @@ def parse_args():
     parser.add_argument("--images_dir", type=str, default=None, help="directory containing images for batch inference")
     return parser.parse_args()
 
+def load_image(image_path, params):
+    image = cv2.imread(image_path)
+    if image is None:
+        raise FileNotFoundError(image_path)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    # match dataset transform
+    tfm = my_transforms.Compose([my_transforms.Resize(params["resize_shape"]), my_transforms.ToTensor(), my_transforms.Normalize(mean=params["normalize_means"], std=params["normalize_stds"])])
+    image = tfm(image, np.zeros_like(image[:, :, 0]))[0]  # ignore mask
+    return image
+
 def tensor_to_image(tensor):
     image = tensor.detach().cpu().squeeze()
     if image.ndim == 3:
@@ -308,7 +322,7 @@ def segmentation_inference(model, image, gt_mask=None):
     plt.tight_layout()
     plt.show()
 
-def classification_inference(model, image):
+def classification_inference(model, image, gt_label=None):
     model.eval()
 
     with torch.no_grad():
@@ -319,10 +333,9 @@ def classification_inference(model, image):
         pred_class = torch.argmax(probs).item()
 
     print("\nPrediction:")
-    print(f"{params_ISIC_2018['index_to_class_name_dict'][pred_class]} -> {probs[pred_class].item()*100:.2f}%")
-    print("\n")
-    for i, p in enumerate(probs):
-        print(f"{params_ISIC_2018['index_to_class_name_dict'][i]} -> {p.item()*100:.2f}%")
+    print(f"Predicted: {params_ISIC_2018['index_to_class_name_dict'][pred_class]} -> {probs[pred_class].item()*100:.2f}%")
+    if gt_label is not None:
+        print(f"Ground Truth: {params_ISIC_2018['index_to_class_name_dict'][gt_label]}")
 
     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
     ax.imshow(tensor_to_image(image))
@@ -331,7 +344,7 @@ def classification_inference(model, image):
     plt.tight_layout()
     plt.show()
 
-def multitask_inference(model, image, gt_mask=None):
+def multitask_inference(model, image, gt_mask=None, gt_label=None):
     model.eval()
 
     image.requires_grad = True
@@ -371,10 +384,9 @@ def multitask_inference(model, image, gt_mask=None):
 
     # output results
     print("\nPrediction:")
-    print(f"{params_ISIC_2018['index_to_class_name_dict'][pred_class]} -> {probs[pred_class].item()*100:.2f}%")
-    print("\n")
-    for i, p in enumerate(probs):
-        print(f"{params_ISIC_2018['index_to_class_name_dict'][i]} -> {p.item()*100:.2f}%")
+    print(f"Predicted: {params_ISIC_2018['index_to_class_name_dict'][pred_class]} -> {probs[pred_class].item()*100:.2f}%")
+    if gt_label is not None:
+        print(f"Ground Truth: {params_ISIC_2018['index_to_class_name_dict'][gt_label]}")
 
     fig, ax = plt.subplots(2, 3, figsize=(14, 8))
     # original image
@@ -496,16 +508,43 @@ def main():
     # perform inference
     for image_path in image_paths:
         print(f"\nRunning inference on: {image_path}")
-        image = dataloaders.load_image(image_path, params)
+        image = load_image(image_path, params)
         image = image.unsqueeze(0).to(params["device"])
+        gt_mask = None
+        gt_label = None
+
+        # load mask for segmentation / multitask
+        if args.task in ["segmentation", "multitask"]:
+            image_name = os.path.basename(image_path)
+            image_stem = os.path.splitext(image_name)[0]
+            mask_name = f"{image_stem}_segmentation.png"
+            mask_path = os.path.join(params["dataset_path"], args.task, "test", "masks", mask_name)
+
+            if os.path.exists(mask_path):
+                gt_mask = dataloaders.load_image(mask_path, params)
+                if gt_mask.ndim == 3:
+                    gt_mask = gt_mask[0]
+                gt_mask = gt_mask.unsqueeze(0)
+            else:
+                print(f"Ground truth mask not found: {mask_path}")
+        
+        if args.task in ["classification", "multitask"]:
+            labels_path = os.path.join(params["dataset_path"], args.task, "test", "labels.csv")
+
+            if os.path.exists(labels_path):
+                labels_df = pd.read_csv(labels_path)
+                image_name = os.path.basename(image_path)
+                row = labels_df[labels_df["image"] == image_name]
+                if len(row) > 0:
+                    gt_label = int(row.iloc[0]["label"])
 
         # task selection
         if args.task == "segmentation":
-            segmentation_inference(model, image)
+            segmentation_inference(model, image, gt_mask)
         elif args.task == "classification":
-            classification_inference(model, image)
+            classification_inference(model, image, gt_label)
         else:
-            multitask_inference(model, image)
+            multitask_inference(model, image, gt_mask, gt_label)
 
 if __name__ == '__main__':
     main()
