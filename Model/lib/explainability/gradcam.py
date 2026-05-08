@@ -12,7 +12,7 @@ import torch
 import torch.nn.functional as F
 
 class GradCam:
-    def __init__(self, model, target_layer):
+    def __init__(self, model, target_layer, output_key="Classification"):
         self.model = model
         self.gradients = None
         self.activations = None
@@ -26,10 +26,16 @@ class GradCam:
     def backward_hook(self, module, grad_input, grad_output):
         self.gradients = grad_output[0]
 
-    def __call__(self, cls_out, class_idx):
-        self.model.zero_grad()
-        score = cls_out[0, class_idx]
+    def __call__(self, model, input_image, class_idx):
+        model.zero_grad()
+        output = self.model(input_image)
+        if isinstance(output, dict):
+            output = output["classification"]
+        score = output[0, class_idx]
         score.backward(retain_graph=True)
+
+        if self.gradients is None:
+            raise RuntimeError("Gradients empty. Wrong targer layer.")
 
         # GAP on gradients
         weights = self.gradients.mean(dim=(2, 3), keepdim=True)

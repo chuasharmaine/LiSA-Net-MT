@@ -9,6 +9,7 @@ import os
 import argparse
 from glob import glob
 import torch
+import torch.nn as nn
 import matplotlib.pyplot as plt
 import numpy as np
 import torch.nn.functional as F
@@ -354,31 +355,46 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     image.requires_grad = True
     seg_out = model_seg(image)
     cls_out = model_cls(image)
-    if isinstance(seg_out, tuple):
-        seg_out = seg_out[0]
-    if isinstance(cls_out, tuple):
-        cls_out = cls_out[1]
+    if isinstance(seg_out, dict):
+        seg_out = seg_out["segmentation"]
+    if isinstance(cls_out, dict):
+        cls_out = cls_out["classification"]
 
     probs = F.softmax(cls_out, dim=1)[0]
-    pred_class = torch.argmax(probs).item()
+    pred_class = torch.argmax(cls_out).item()
     seg_mask = torch.argmax(seg_out, dim=1)[0].detach().cpu()
 
     # GRAD-CAM
-    target_layer = model_cls.encoder[-1]
+    target_layer = model_cls.down_convs[-1]
     gradcam = GradCam(model_cls, target_layer)
-    cam = gradcam(cls_out, pred_class)
+    cam = gradcam(model_cls, image, pred_class)
     cam = cam.detach().cpu().squeeze().numpy()
     cam = (cam - cam.min()) / (cam.max() + 1e-8)
 
-    def forward_fn(x):
-        out = model_cls(x)
-        if isinstance(out, tuple):
-            out = out[1]
-        return out
+    class ForwardEx(torch.nn.Module):
+        def __init__(self, model):
+            super().__init__()
+            self.model = model
+
+        def forward(self, x):
+            device = next(self.model.parameters()).device
+            x = x.to(device)
+
+            out = self.model(x)
+            if isinstance(out, tuple):
+                out = out[1]
+            if isinstance(out, dict):
+                out = out["classification"]
+            return out
+        
+    forward_fn = ForwardEx(model_cls)
+    forward_fn.eval()
+    input_tensor = image.unsqueeze(0).detach()
+    
     # SHAP
     try:
         shap = SHAP(forward_fn)
-        shap_map = shap(image.unsqueeze(0))
+        shap_map = shap(input_tensor)
         if len(shap_map.shape) == 3:
             shap_map = np.mean(shap_map, axis=0)
 
@@ -389,7 +405,7 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     # LIME
     try:
         lime = LIME(forward_fn)
-        lime_map = lime(image.unsqueeze(0))
+        lime_map = lime(input_tensor)
         if len(lime_map.shape) == 3:
             lime_map = np.mean(lime_map, axis=0)
 
@@ -540,7 +556,7 @@ def main():
             mask_path = os.path.join(params["dataset_path"], args.task, "test", "masks", mask_name)
 
             if os.path.exists(mask_path):
-                gt_mask = dataloaders.load_image(mask_path, params)
+                gt_mask = load_image(mask_path, params)
                 if gt_mask.ndim == 3:
                     gt_mask = gt_mask[0]
                 gt_mask = gt_mask.unsqueeze(0)
