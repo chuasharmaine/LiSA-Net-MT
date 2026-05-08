@@ -16,6 +16,7 @@ import torch.nn.functional as F
 import pandas as pd
 import cv2
 import lib.transforms.two as my_transforms
+import matplotlib.gridspec as gridspec
 
 from lib import utils, dataloaders, models, metrics, testers
 from lib.explainability.gradcam import GradCam
@@ -447,53 +448,71 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
         lime_map = np.zeros((224, 224))
 
     # output results
-    print("\nPrediction:")
-    print(f"Predicted: {params_ISIC_2018['index_to_class_name_dict'][pred_class]} -> {probs[pred_class].item()*100:.2f}%")
+
+    fig = plt.figure(figsize=(18, 10))
+    gs = gridspec.GridSpec(3, 4, figure=fig)
+    # title
+    ax_title = fig.add_subplot(gs[0, :])
+    ax_title.axis("off")
+    ax_title.text(0.5, 0.5, f"Prediction: {class_names[pred_class]} — {probs[pred_class].item()*100:.2f}%", ha="center", va="center", fontsize=20, fontweight="bold")
+
+    # GT Class (text)
+    ax_gt_text = fig.add_subplot(gs[1, 0])
+    ax_gt_text.axis("off")
     if gt_label is not None:
-        print(f"Ground Truth: {params_ISIC_2018['index_to_class_name_dict'][gt_label]}")
-
-    fig, ax = plt.subplots(2, 4, figsize=(14, 8))
-    # original image
-    ax[0, 0].imshow(tensor_to_image(image))
-    ax[0, 0].set_title("Original Image")
-    ax[0, 0].axis("off")
-
-    # ground truth mask
-    if gt_mask is not None:
-        ax[0, 1].imshow(gt_mask.squeeze().cpu(), cmap="gray")
-        ax[0, 1].set_title("Ground Truth")
+        gt_text = f"GT Class:\n{class_names[gt_label]}"
     else:
-        ax[0, 1].imshow(seg_mask, cmap="gray")
-        ax[0, 1].set_title("Ground Truth Not Available")
-    ax[0, 1].axis("off")
+        gt_text = "GT Class:\nN/A"
+    ax_gt_text.text(0, 0.5, gt_text, fontsize=12, va="center")
 
-    # segmentation mask
-    ax[0, 2].imshow(seg_mask, cmap="gray")
-    ax[0, 2].set_title("Predicted Mask")
-    ax[0, 2].axis("off")
+    # Input Image
+    ax_img = fig.add_subplot(gs[1, 1])
+    ax_img.imshow(tensor_to_image(image))
+    ax_img.set_title("Input")
+    ax_img.axis("off")
 
-    # GRADCAM
-    ax[1, 0].imshow(cam, cmap="jet")
-    ax[1, 0].set_title("Grad-CAM")
-    ax[1, 0].axis("off")
+    # GT Mask
+    ax_gt = fig.add_subplot(gs[1, 2])
+    if gt_mask is not None:
+        ax_gt.imshow(gt_mask.squeeze().cpu(), cmap="gray")
+        ax_gt.set_title("GT Mask")
+    else:
+        ax_gt.imshow(seg_mask, cmap="gray")
+        ax_gt.set_title("GT Mask (N/A)")
+    ax_gt.axis("off")
+
+    # Pred Mask
+    ax_pred = fig.add_subplot(gs[1, 3])
+    ax_pred.imshow(seg_mask, cmap="gray")
+    ax_pred.set_title("Pred Mask")
+    ax_pred.axis("off")
+
+    # Probabilities
+    ax_prob = fig.add_subplot(gs[2, 0])
+    ax_prob.axis("off")
+    text = "Probabilities\n\n"
+    for i in sorted_indices:
+        i = i.item()
+        text += f"{class_names[i]}: {probs[i].item()*100:.2f}%\n"
+    ax_prob.text(0, 1, text, va="top", fontsize=10)
+
+    # GradCAM
+    ax_cam = fig.add_subplot(gs[2, 1])
+    ax_cam.imshow(cam, cmap="jet")
+    ax_cam.set_title("Grad-CAM")
+    ax_cam.axis("off")
 
     # SHAP
-    ax[1, 1].imshow(shap_map, cmap="jet")
-    ax[1, 1].set_title("SHAP")
-    ax[1, 1].axis("off")
+    ax_shap = fig.add_subplot(gs[2, 2])
+    ax_shap.imshow(shap_map, cmap="jet")
+    ax_shap.set_title("SHAP")
+    ax_shap.axis("off")
 
     # LIME
-    ax[1, 2].imshow(lime_map, cmap="jet")
-    ax[1, 2].set_title("LIME")
-    ax[1, 2].axis("off")
-
-    # Probability Bar Chart
-    prob_values = probs.detach().cpu().numpy()
-    ax[1, 3].barh(class_names, prob_values)
-    ax[1, 3].set_xlim(0, 1)
-    ax[1, 3].set_title("Classification Probabilities")
-    for i, v in enumerate(prob_values):
-        ax[1, 3].text(v + 0.01, i, f"{v*100:.1f}%")
+    ax_lime = fig.add_subplot(gs[2, 3])
+    ax_lime.imshow(lime_map, cmap="jet")
+    ax_lime.set_title("LIME")
+    ax_lime.axis("off")
 
     plt.tight_layout()
     plt.show()
