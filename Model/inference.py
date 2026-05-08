@@ -267,6 +267,9 @@ def parse_args():
     parser.add_argument("--dataset", type=str, default="ISIC-2018", help="dataset name")
     parser.add_argument("--model", type=str, default="LiSANetMT", help="model name")
     parser.add_argument("--pretrain_weight", type=str, default="pretrain/LiSANet-1000-K1.pth", help="pre-trained weight file path")
+    # loading two pretrain for multitask, todo: combine path next time
+    parser.add_argument("--pretrain_weight_seg", type=str, default=None, help="pre-trained weight file path")
+    parser.add_argument("--pretrain_weight_cls", type=str, default=None, help="pre-trained weight file path")
     parser.add_argument("--dimension", type=str, default="2d", help="dimension of dataset images and models")
     parser.add_argument("--scaling_version", type=str, default="BASIC", help="scaling version of PMFSNet")
     parser.add_argument("--task", type=str, default="multitask", choices=["segmentation", "classification", "multitask"], help="which task to perform")
@@ -344,26 +347,38 @@ def classification_inference(model, image, gt_label=None):
     plt.tight_layout()
     plt.show()
 
-def multitask_inference(model, image, gt_mask=None, gt_label=None):
-    model.eval()
+def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None):
+    model_seg.eval()
+    model_cls.eval()
 
     image.requires_grad = True
-    seg_out, cls_out = model(image)
+    seg_out = model_seg(image)
+    cls_out = model_cls(image)
+    if isinstance(seg_out, tuple):
+        seg_out = seg_out[0]
+    if isinstance(cls_out, tuple):
+        cls_out = cls_out[1]
+
     probs = F.softmax(cls_out, dim=1)[0]
     pred_class = torch.argmax(probs).item()
     seg_mask = torch.argmax(seg_out, dim=1)[0].detach().cpu()
 
     # GRAD-CAM
-    target_layer = list(model.modules())[-2]
-    gradcam = GradCam(model, target_layer)
+    target_layer = model_cls.encoder[-1]
+    gradcam = GradCam(model_cls, target_layer)
     cam = gradcam(cls_out, pred_class)
     cam = cam.detach().cpu().squeeze().numpy()
     cam = (cam - cam.min()) / (cam.max() + 1e-8)
 
+    def forward_fn(x):
+        out = model_cls(x)
+        if isinstance(out, tuple):
+            out = out[1]
+        return out
     # SHAP
     try:
-        shap = SHAP(model)
-        shap_map = shap(image)
+        shap = SHAP(forward_fn)
+        shap_map = shap(image.unsqueeze(0))
         if len(shap_map.shape) == 3:
             shap_map = np.mean(shap_map, axis=0)
 
@@ -373,8 +388,8 @@ def multitask_inference(model, image, gt_mask=None, gt_label=None):
 
     # LIME
     try:
-        lime = LIME(model)
-        lime_map = lime(image)
+        lime = LIME(forward_fn)
+        lime_map = lime(image.unsqueeze(0))
         if len(lime_map.shape) == 3:
             lime_map = np.mean(lime_map, axis=0)
 
@@ -444,7 +459,7 @@ def main():
     params["dataset_name"] = args.dataset
     params["dataset_path"] = os.path.join(r"./datasets", ("NC-release-data-checked" if args.dataset == "3D-CBCT-Tooth" else args.dataset))
     params["model_name"] = args.model
-    if args.pretrain_weight is None:
+    if args.pretrain_weight is None and (args.pretrain_weight_seg is None and args.pretrain_weight_cls is None):
         raise RuntimeError("model weights cannot be None")
     params["pretrain"] = args.pretrain_weight
     params["dimension"] = args.dimension
@@ -466,7 +481,17 @@ def main():
     print("Complete the initialization of configuration")
 
     # initialize the model
-    model = models.get_model(params)
+    if args.task == "multitask":
+        model_seg = models.get_model(params)
+        model_cls = models.get_model(params)
+        model_seg.load_state_dict(torch.load(args.pretrain_weight_seg, map_location=params["device"]))
+        model_cls.load_state_dict(torch.load(args.pretrain_weight_cls, map_location=params["device"]))
+        model_seg.to(params["device"]).eval()
+        model_cls.to(params["device"]).eval()
+    else:
+        model = models.get_model(params)
+        model.load_state_dict(torch.load(args.pretrain_weight, map_location=params["device"]))
+        model.to(params["device"]).eval()
     print("Complete the initialization of model:{}".format(params["model_name"]))
 
     # Detect model task 
@@ -487,11 +512,19 @@ def main():
     print("Complete the initialization of metrics")
 
     # initialize the tester
-    tester = testers.get_tester(params, model, metric)
+    if args.task == "multitask":
+        tester_seg = testers.get_tester(params, model_seg, metric)
+        tester_cls = testers.get_tester(params, model_cls, metric)
+    else:
+        tester = testers.get_tester(params, model, metric)
     print("Complete the initialization of tester")
 
     # load training weights
-    tester.load()
+    if args.task == "multitask":
+        tester_seg.load()
+        tester_cls.load()
+    else:
+        tester.load()
     print("Complete loading training weights")
 
     # prepare images for inference
@@ -544,7 +577,7 @@ def main():
         elif args.task == "classification":
             classification_inference(model, image, gt_label)
         else:
-            multitask_inference(model, image, gt_mask, gt_label)
+            multitask_inference(model_seg, model_cls, image, gt_mask, gt_label)
 
 if __name__ == '__main__':
     main()
