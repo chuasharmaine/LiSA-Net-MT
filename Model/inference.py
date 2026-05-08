@@ -1,19 +1,22 @@
+"""
+@author   :   andredalwin + chuasharmaine 
+@Contact  :   sharmainechua134@gmail.com
+@DateTime :   2026/05/08
+@Version  :   2.0
+"""
 
-"""
-@author   :   andredalwin    
-@Contact  :   hello@andredalwin.com
-@DateTime :   2025/05/31
-@Version  :   1.0
-"""
 import os
 import argparse
 from glob import glob
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
+import torch.nn.functional as F
 
 from lib import utils, dataloaders, models, metrics, testers
 from lib.explainability.gradcam import GradCam
+from lib.explainability.shap import SHAP
+from lib.explainability.lime import LIME
 
 params_3D_CBCT_Tooth = {
     # ——————————————————————————————————————————————    Launch Initialization    —————————————————————————————————————————————————
@@ -190,12 +193,31 @@ params_ISIC_2018 = {
     # —————————————————————————————————————————————    Model     ——————————————————————————————————————————————————————
     "model_name": "PMFSNet",
     "in_channels": 3,
-    "classes": 2,
+    "seg_classes": 2,
+    "cls_classes": 7,
+    "segmentation": True, 
+    "classification": True, 
     "index_to_class_dict":
-        {
-            0: "background",
-            1: "foreground"
-        },
+    {
+        0: "MEL", # Melanoma
+        1: "NV", # Melanocytic nevus
+        2: "BCC", # Basal cell carcinoma
+        3: "AKIEC", # Actinic keratosis
+        4: "BKL", # Benign keratosis
+        5: "DF", # Dermatofibroma
+        6: "VASC"  # Vascular lesion
+    },
+    "index_to_class_name_dict":
+    {
+        0: "Melanoma",
+        1: "Melanocytic Nevus",
+        2: "Basal Cell Carcinoma",
+        3: "Actinic Keratosis",
+        4: "Benign Keratosis",
+        5: "Dermatofibroma",
+        6: "Vascular Lesion"
+
+    },
     "resume": None,
     "pretrain": None,
     # ——————————————————————————————————————————————    Optimizer     ——————————————————————————————————————————————————————
@@ -215,8 +237,11 @@ params_ISIC_2018 = {
     "patience": 20,
     "factor": 0.3,
     # ————————————————————————————————————————————    Loss And Metric     ———————————————————————————————————————————————————————
-    "metric_names": ["DSC", "IoU", "JI", "ACC"],
-    "loss_function_name": "DiceLoss",
+    "metric_names": ["ACC_SEG", "DSC", "IoU", "JI", "ACC_CLS", "AUC_ROC", "F1_MACRO"],
+    "loss_function_name": {
+        "segmentation": "DiceLoss",
+        "classification": "CrossEntropyLoss"
+    },
     "class_weight": [0.029, 1 - 0.029],
     "sigmoid_normalization": False,
     "dice_loss_mode": "extension",
@@ -229,21 +254,165 @@ params_ISIC_2018 = {
     "best_metric": 0,
     "terminal_show_freq": 20,
     "save_epoch_freq": 50,
+    "seg_weight": 0.5,
+    "cls_weight": 0.5,
 }
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default="ISIC-2018", help="dataset name")
-    parser.add_argument("--model", type=str, default="LiSANet", help="model name")
+    parser.add_argument("--model", type=str, default="LiSANetMT", help="model name")
     parser.add_argument("--pretrain_weight", type=str, default="pretrain/LiSANet-1000-K1.pth", help="pre-trained weight file path")
     parser.add_argument("--dimension", type=str, default="2d", help="dimension of dataset images and models")
     parser.add_argument("--scaling_version", type=str, default="BASIC", help="scaling version of PMFSNet")
+    parser.add_argument("--task", type=str, default="multitask", choices=["segmentation", "classification", "multitask"], help="which task to perform")
     parser.add_argument("--image_path", type=str, default=None, help="path of single inferred image")
     parser.add_argument("--images_dir", type=str, default=None, help="directory containing images for batch inference")
-    parser.add_argument("--task", type=str, default="multitask", choices=["segmentation", "classification", "multitask"], help="which task to perform")
     return parser.parse_args()
 
+def tensor_to_image(tensor):
+    image = tensor.detach().cpu().squeeze()
+    if image.ndim == 3:
+        image = image.permute(1, 2, 0)
+
+    image = image.numpy()
+    image = (image - image.min()) / (image.max() - image.min() + 1e-8)
+    return image
+
+def segmentation_inference(model, image, gt_mask=None):
+    model.eval()
+
+    with torch.no_grad():
+        seg_out = model(image)
+        if isinstance(seg_out, tuple):
+            seg_out = seg_out[0]
+        seg_mask = torch.argmax(seg_out, dim=1)[0].detach().cpu()
+
+    fig, ax = plt.subplots(1, 3, figsize=(12, 4))
+    ax[0].imshow(tensor_to_image(image))
+    ax[0].set_title("Original Image")
+    ax[0].axis("off")
+
+    if gt_mask is not None:
+        ax[1].imshow(gt_mask.squeeze().cpu(), cmap="gray")
+        ax[1].set_title("Ground Truth")
+    else:
+        ax[1].imshow(seg_mask, cmap="gray")
+        ax[1].set_title("Ground Truth Not Available")
+
+    ax[1].axis("off")
+    ax[2].imshow(seg_mask, cmap="gray")
+    ax[2].set_title("Predicted Mask")
+    ax[2].axis("off")
+    plt.tight_layout()
+    plt.show()
+
+def classification_inference(model, image):
+    model.eval()
+
+    with torch.no_grad():
+        cls_out = model(image)
+        if isinstance(cls_out, tuple):
+            cls_out = cls_out[1]
+        probs = F.softmax(cls_out, dim=1)[0]
+        pred_class = torch.argmax(probs).item()
+
+    print("\nPrediction:")
+    print(f"{params_ISIC_2018['index_to_class_name_dict'][pred_class]} -> {probs[pred_class].item()*100:.2f}%")
+    print("\n")
+    for i, p in enumerate(probs):
+        print(f"{params_ISIC_2018['index_to_class_name_dict'][i]} -> {p.item()*100:.2f}%")
+
+    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+    ax.imshow(tensor_to_image(image))
+    ax.set_title("Original Image")
+    ax.axis("off")
+    plt.tight_layout()
+    plt.show()
+
+def multitask_inference(model, image, gt_mask=None):
+    model.eval()
+
+    image.requires_grad = True
+    seg_out, cls_out = model(image)
+    probs = F.softmax(cls_out, dim=1)[0]
+    pred_class = torch.argmax(probs).item()
+    seg_mask = torch.argmax(seg_out, dim=1)[0].detach().cpu()
+
+    # GRAD-CAM
+    target_layer = list(model.modules())[-2]
+    gradcam = GradCam(model, target_layer)
+    cam = gradcam(cls_out, pred_class)
+    cam = cam.detach().cpu().squeeze().numpy()
+    cam = (cam - cam.min()) / (cam.max() + 1e-8)
+
+    # SHAP
+    try:
+        shap = SHAP(model)
+        shap_map = shap(image)
+        if len(shap_map.shape) == 3:
+            shap_map = np.mean(shap_map, axis=0)
+
+    except Exception as e:
+        print(f"SHAP failed: {e}")
+        shap_map = np.zeros((224, 224))
+
+    # LIME
+    try:
+        lime = LIME(model)
+        lime_map = lime(image)
+        if len(lime_map.shape) == 3:
+            lime_map = np.mean(lime_map, axis=0)
+
+    except Exception as e:
+        print(f"LIME failed: {e}")
+        lime_map = np.zeros((224, 224))
+
+    # output results
+    print("\nPrediction:")
+    print(f"{params_ISIC_2018['index_to_class_name_dict'][pred_class]} -> {probs[pred_class].item()*100:.2f}%")
+    print("\n")
+    for i, p in enumerate(probs):
+        print(f"{params_ISIC_2018['index_to_class_name_dict'][i]} -> {p.item()*100:.2f}%")
+
+    fig, ax = plt.subplots(2, 3, figsize=(14, 8))
+    # original image
+    ax[0, 0].imshow(tensor_to_image(image))
+    ax[0, 0].set_title("Original Image")
+    ax[0, 0].axis("off")
+
+    # ground truth mask
+    if gt_mask is not None:
+        ax[0, 1].imshow(gt_mask.squeeze().cpu(), cmap="gray")
+        ax[0, 1].set_title("Ground Truth")
+    else:
+        ax[0, 1].imshow(seg_mask, cmap="gray")
+        ax[0, 1].set_title("Ground Truth Not Available")
+    ax[0, 1].axis("off")
+
+    # segmentation mask
+    ax[0, 2].imshow(seg_mask, cmap="gray")
+    ax[0, 2].set_title("Predicted Mask")
+    ax[0, 2].axis("off")
+
+    # GRADCAM
+    ax[1, 0].imshow(cam, cmap="jet")
+    ax[1, 0].set_title("Grad-CAM")
+    ax[1, 0].axis("off")
+
+    # SHAP
+    ax[1, 1].imshow(shap_map, cmap="jet")
+    ax[1, 1].set_title("SHAP")
+    ax[1, 1].axis("off")
+
+    # LIME
+    ax[1, 2].imshow(lime_map, cmap="jet")
+    ax[1, 2].set_title("LIME")
+    ax[1, 2].axis("off")
+
+    plt.tight_layout()
+    plt.show()
 
 def main():
     # analyse console arguments
@@ -313,101 +482,30 @@ def main():
     tester.load()
     print("Complete loading training weights")
 
+    # prepare images for inference
+    image_paths = []
+
+    if args.image_path is not None:
+        image_paths.append(args.image_path)
+    elif args.images_dir is not None:
+        image_paths = glob(os.path.join(args.images_dir, "*"))
+    else:
+        raise RuntimeError("Provide image_path or images_dir")
+
+
     # perform inference
-    if args.image_path:
-        # single image inference
-        print(f"Performing inference on single image: {args.image_path}")
-        output_path = args.image_path.replace(".jpg", "_seg.png").replace(".png", "_seg.png")
-        tester.inference(args.image_path, output_path)
- 
-    elif args.images_dir:
-        # Get all image paths from the specified directory
-        image_paths = glob(os.path.join(args.images_dir, '*'))
+    for image_path in image_paths:
+        print(f"\nRunning inference on: {image_path}")
+        image = dataloaders.load_image(image_path, params)
+        image = image.unsqueeze(0).to(params["device"])
 
-        # Perform inference on each image
-        for image_path in image_paths:
-            print(f"Performing inference on image: {image_path}")
-
-            image = dataloaders.load_image(image_path, params)
-            image = image.unsqueeze(0).to(params["device"])
-            image.requires_grad = True
-
-            seg_out, cls_out = model(image)
-            probs = torch.softmax(cls_out, dim=1)
-            pred_class = torch.argmax(probs, dim=1).item()
-
-            cam_model = GradCam(model, target_layer)
-            cam = cam_model(cls_out, pred_class)
-
-            result = run_inference(model, image, params["device"])
-
-def run_inference(model, image, device, gt_mask=None):
-    model.eval()
-    image = image.to(device)
-    image.requires_grad = True
-
-    seg_out, cls_out = model(image)
-
-    probs = torch.softmax(cls_out, dim=1)[0]
-    pred_class = torch.argmax(probs).item()
-
-    seg_mask = torch.argmax(seg_out, dim=1)[0].detach().cpu()
-
-    # GRAD-CAM
-    cam_model = GradCam(model, target_layer=list(model.modules())[-2])
-    cam = cam_model(cls_out, pred_class)
-
-    cam = cam.detach().cpu().squeeze().numpy()
-
-    # normalize cam for display
-    cam = (cam - cam.min()) / (cam.max() + 1e-8)
-
-    class_names = [
-        "Melanoma",
-        "Basal Cell Carcinoma",
-        "Actinic Keratoses",
-        "Melanocytic Nevi",
-        "Benign Keratosis-like Lesions",
-        "Dermatofibroma",
-        "Vascular Lesions"
-    ]
-
-    print("\nPrediction Class:")
-    print(f"{class_names[pred_class]} — {probs[pred_class].item()*100:.2f}%")
-
-    print("\nBreakdown:")
-    for i, p in enumerate(probs):
-        print(f"{i+1}. {class_names[i]} — {p.item()*100:.2f}%")
-
-    fig, ax = plt.subplots(2, 3, figsize=(14, 8))
-
-    ax[0,0].imshow(image.detach().cpu().squeeze(), cmap="gray")
-    ax[0,0].set_title("Original Lesion")
-
-    ax[0,1].imshow(gt_mask.squeeze().cpu() if gt_mask is not None else seg_mask, cmap="gray")
-    ax[0,1].set_title("Ground Truth" if gt_mask is not None else "Seg Mask")
-
-    ax[0,2].imshow(seg_mask, cmap="gray")
-    ax[0,2].set_title("Prediction Mask")
-
-    ax[1,0].imshow(cam, cmap="jet")
-    ax[1,0].set_title("Grad-CAM")
-
-    ax[1,1].axis("off")
-    ax[1,1].set_title("SHAP (not implemented)")
-
-    ax[1,2].axis("off")
-    ax[1,2].set_title("LIME (not implemented)")
-
-    plt.tight_layout()
-    plt.show()
-
-    return {
-        "probs": probs,
-        "pred_class": pred_class,
-        "seg_mask": seg_mask,
-        "cam": cam
-    }
+        # task selection
+        if args.task == "segmentation":
+            segmentation_inference(model, image)
+        elif args.task == "classification":
+            classification_inference(model, image)
+        else:
+            multitask_inference(model, image)
 
 if __name__ == '__main__':
     main()

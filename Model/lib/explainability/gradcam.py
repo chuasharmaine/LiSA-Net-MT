@@ -1,6 +1,5 @@
 """
 Grad-CAM adapated from https://github.com/leftthomas/GradCAM
-Original author: Hao Ren (leftthomas)
 Paper: Selvaraju et al., "Grad-CAM: Visual Explanations from Deep Networks via Gradient-based Localization", ICCV 2017
 
 Notes:
@@ -28,17 +27,18 @@ class GradCam:
         self.gradients = grad_output[0]
 
     def __call__(self, cls_out, class_idx):
-
         self.model.zero_grad()
-
         score = cls_out[0, class_idx]
         score.backward(retain_graph=True)
 
+        # GAP on gradients
         weights = self.gradients.mean(dim=(2, 3), keepdim=True)
         cam = (weights * self.activations).sum(dim=1)
-
         cam = torch.relu(cam)
+        # upsample to input size
+        cam = F.interpolate(cam.unsqueeze(1), size=(224, 224), mode="bilinear", align_corners=False).squeeze()
+        
+        # normalize
         cam = cam - cam.min()
-        cam = cam / (cam.max() + 1e-8)
-
-        return cam
+        cam = cam / (cam.max() - cam.min() + 1e-8)
+        return cam.detach()
