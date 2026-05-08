@@ -364,6 +364,35 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     pred_class = torch.argmax(cls_out).item()
     seg_mask = torch.argmax(seg_out, dim=1)[0].detach().cpu()
 
+    class_names = params_ISIC_2018["index_to_class_name_dict"]
+    # malignant / benign grouping
+    malignant_classes = [0, 2, 3]
+    benign_classes = [1, 4, 5, 6]
+
+    # print prediction
+    print("\nPrediction Class:")
+    print(f"{class_names[pred_class]} — {probs[pred_class].item()*100:.2f}%")
+
+    if gt_label is not None:
+        print(f"Actual Class: {class_names[gt_label]}")
+
+    # sort probabilities descending
+    sorted_probs, sorted_indices = torch.sort(probs, descending=True)
+
+    print("\nBreakdown of Probabilities")
+
+    print("\nMalignant")
+    for idx in sorted_indices:
+        idx = idx.item()
+        if idx in malignant_classes:
+            print(f"{idx+1}. {class_names[idx]} — {probs[idx].item()*100:.2f}%")
+
+    print("\nBenign")
+    for idx in sorted_indices:
+        idx = idx.item()
+        if idx in benign_classes:
+            print(f"{idx+1}. {class_names[idx]} — {probs[idx].item()*100:.2f}%")
+
     # GRAD-CAM
     target_layer = model_cls.down_convs[-1]
     gradcam = GradCam(model_cls, target_layer)
@@ -423,7 +452,7 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     if gt_label is not None:
         print(f"Ground Truth: {params_ISIC_2018['index_to_class_name_dict'][gt_label]}")
 
-    fig, ax = plt.subplots(2, 3, figsize=(14, 8))
+    fig, ax = plt.subplots(2, 4, figsize=(14, 8))
     # original image
     ax[0, 0].imshow(tensor_to_image(image))
     ax[0, 0].set_title("Original Image")
@@ -457,6 +486,14 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     ax[1, 2].imshow(lime_map, cmap="jet")
     ax[1, 2].set_title("LIME")
     ax[1, 2].axis("off")
+
+    # Probability Bar Chart
+    prob_values = probs.detach().cpu().numpy()
+    ax[1, 3].barh(class_names, prob_values)
+    ax[1, 3].set_xlim(0, 1)
+    ax[1, 3].set_title("Classification Probabilities")
+    for i, v in enumerate(prob_values):
+        ax[1, 3].text(v + 0.01, i, f"{v*100:.1f}%")
 
     plt.tight_layout()
     plt.show()

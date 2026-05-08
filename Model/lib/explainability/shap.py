@@ -37,13 +37,10 @@ class SHAP:
     def __call__(self, image):
         # image shape: [1, C, H, W]
         device = next(self.model.parameters()).device
-        image = image.to(device)
+        image = image.to(device).detach()
 
         # create simple background
-        background = torch.zeros((self.background_size, image.shape[1], image.shape[2], image.shape[3]), device=device)
-
-        background = background.detach()
-        image_np = image.detach()
+        background = torch.zeros((self.background_size, image.shape[1], image.shape[2], image.shape[3]), device=device).detach()
 
         # SHAP explainer
         explainer = shap.GradientExplainer(self.model, background)
@@ -55,9 +52,16 @@ class SHAP:
         """
 
         # choose predicted class
-        preds = self.predict_fn(image_np)
-        pred_class = np.argmax(preds)
-        shap_map = shap_values[pred_class][0]
+        with torch.no_grad():
+            preds = self.model(image)
+            if isinstance(preds, tuple):
+                preds = preds[1]
+            probs = torch.softmax(preds, dim=1)
+            pred_class = torch.argmax(probs, dim=1).item()
+        if isinstance(shap_values, list):
+            shap_map = shap_values[pred_class][0]
+        else:
+            shap_map = shap_values[0]
 
         # average channels if RGB
         if shap_map.ndim == 3:
