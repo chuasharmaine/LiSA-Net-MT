@@ -372,14 +372,16 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     cam = (cam - cam.min()) / (cam.max() + 1e-8)
 
     class ForwardEx(torch.nn.Module):
-        def __init__(self, model):
+        def __init__(self, model, device):
             super().__init__()
             self.model = model
+            self.device = device
+            self.model.eval()
 
         def forward(self, x):
-            device = next(self.model.parameters()).device
-            x = x.to(device)
-
+            if isinstance(x, np.ndarray):
+                x = torch.from_numpy(x).float()
+            x = x.to(self.device)
             out = self.model(x)
             if isinstance(out, tuple):
                 out = out[1]
@@ -387,9 +389,11 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
                 out = out["classification"]
             return out
         
-    forward_fn = ForwardEx(model_cls)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model_cls.to(device)
+    forward_fn = ForwardEx(model_cls, device)
     forward_fn.eval()
-    input_tensor = image.unsqueeze(0).detach()
+    input_tensor = image.detach()
     
     # SHAP
     try:

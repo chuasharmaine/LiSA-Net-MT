@@ -40,27 +40,14 @@ class SHAP:
         image = image.to(device)
 
         # create simple background
-        background = torch.zeros(
-            (
-                self.background_size,
-                image.shape[1],
-                image.shape[2],
-                image.shape[3]
-            ),
-            device=device
-        )
+        background = torch.zeros((self.background_size, image.shape[1], image.shape[2], image.shape[3]), device=device)
 
-        # convert to numpy
-        background_np = background.detach().cpu().numpy()
-        image_np = image.detach().cpu().numpy()
+        background = background.detach()
+        image_np = image.detach()
 
         # SHAP explainer
-        explainer = shap.GradientExplainer(
-            self.predict_fn,
-            background_np
-        )
-
-        shap_values = explainer.shap_values(image_np)
+        explainer = shap.GradientExplainer(self.model, background)
+        shap_values = explainer.shap_values(image)
         """
         shap_values format
         classification: list[num_classes]
