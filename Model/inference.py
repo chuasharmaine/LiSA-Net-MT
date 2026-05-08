@@ -429,8 +429,12 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     try:
         shap = SHAP(forward_fn)
         shap_map = shap(input_tensor)
-        if len(shap_map.shape) == 3:
-            shap_map = np.mean(shap_map, axis=0)
+        shap_map = np.array(shap_map)
+        shap_map = np.squeeze(shap_map)
+        if shap_map.ndim == 4:
+            shap_map = shap_map[0]
+        if shap_map.ndim == 3:
+            shap_map = shap_map[..., pred_class]
 
     except Exception as e:
         print(f"SHAP failed: {e}")
