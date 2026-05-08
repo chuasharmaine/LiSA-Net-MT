@@ -461,7 +461,11 @@ def main():
     params["model_name"] = args.model
     if args.pretrain_weight is None and (args.pretrain_weight_seg is None and args.pretrain_weight_cls is None):
         raise RuntimeError("model weights cannot be None")
-    params["pretrain"] = args.pretrain_weight
+    if args.task == "multitask":
+        params["pretrain_seg"] = args.pretrain_weight_seg
+        params["pretrain_cls"] = args.pretrain_weight_cls
+    else:
+        params["pretrain"] = args.pretrain_weight
     params["dimension"] = args.dimension
     params["scaling_version"] = args.scaling_version
     if args.image_path is None and args.images_dir is None:
@@ -486,45 +490,27 @@ def main():
         model_cls = models.get_model(params)
         model_seg.load_state_dict(torch.load(args.pretrain_weight_seg, map_location=params["device"]))
         model_cls.load_state_dict(torch.load(args.pretrain_weight_cls, map_location=params["device"]))
-        model_seg.to(params["device"]).eval()
-        model_cls.to(params["device"]).eval()
     else:
         model = models.get_model(params)
         model.load_state_dict(torch.load(args.pretrain_weight, map_location=params["device"]))
-        model.to(params["device"]).eval()
     print("Complete the initialization of model:{}".format(params["model_name"]))
 
     # Detect model task 
-    if args.task == "segmentation":
-        params["segmentation"] = True
-        params["classification"] = False
-    elif args.task == "classification":
-        params["segmentation"] = False
-        params["classification"] = True
-    else:  # multitask
-        params["segmentation"] = True
-        params["classification"] = True
+    is_seg = args.task in ["segmentation", "multitask"]
+    is_cls = args.task in ["classification", "multitask"]
  
-    print(f"Segmentation: {params['segmentation']}, Classification: {params['classification']}")
+    print(f"Segmentation: {is_seg}, Classification: {is_cls}")
  
     # initialize the metrics
     metric = metrics.get_metric(params)
     print("Complete the initialization of metrics")
 
-    # initialize the tester
-    if args.task == "multitask":
-        tester_seg = testers.get_tester(params, model_seg, metric)
-        tester_cls = testers.get_tester(params, model_cls, metric)
-    else:
-        tester = testers.get_tester(params, model, metric)
-    print("Complete the initialization of tester")
-
     # load training weights
     if args.task == "multitask":
-        tester_seg.load()
-        tester_cls.load()
+        model_seg.to(params["device"]).eval()
+        model_cls.to(params["device"]).eval()
     else:
-        tester.load()
+        model.to(params["device"]).eval()
     print("Complete loading training weights")
 
     # prepare images for inference
