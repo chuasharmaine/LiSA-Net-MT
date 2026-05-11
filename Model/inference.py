@@ -429,12 +429,7 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     try:
         shap = SHAP(forward_fn)
         shap_map = shap(input_tensor)
-        shap_map = np.array(shap_map)
-        shap_map = np.squeeze(shap_map)
-        if shap_map.ndim == 4:
-            shap_map = shap_map[0]
-        if shap_map.ndim == 3:
-            shap_map = shap_map[..., pred_class]
+
 
     except Exception as e:
         print(f"SHAP failed: {e}")
@@ -452,22 +447,36 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
         lime_map = np.zeros((224, 224))
 
     # output results
-
     fig = plt.figure(figsize=(18, 10))
-    gs = gridspec.GridSpec(3, 4, figure=fig)
+    gs = gridspec.GridSpec(3, 4, figure=fig, height_ratios=[0.18,1,1])
+
+    malignant_classes = [0, 2, 3] 
+    benign_classes = [1, 4, 5, 6]
+    if pred_class in malignant_classes:
+        category = "Malignant" 
+    else:
+        category = "Benign"
+
     # title
     ax_title = fig.add_subplot(gs[0, :])
     ax_title.axis("off")
-    ax_title.text(0.5, 0.5, f"Prediction: {class_names[pred_class]} — {probs[pred_class].item()*100:.2f}%", ha="center", va="center", fontsize=20, fontweight="bold")
+    title_str = f"Prediction: {class_names[pred_class]} ({category}) — {probs[pred_class].item()*100:.2f}%"
+    ax_title.text(0.5, 0.5, title_str, ha="center", fontsize=20, fontweight="bold")
 
     # GT Class (text)
     ax_gt_text = fig.add_subplot(gs[1, 0])
     ax_gt_text.axis("off")
     if gt_label is not None:
-        gt_text = f"GT Class:\n{class_names[gt_label]}"
+        gt_text = f"GT Class:\n{class_names[gt_label]} ({category})"
     else:
         gt_text = "GT Class:\nN/A"
-    ax_gt_text.text(0, 0.5, gt_text, fontsize=12, va="center")
+    ax_gt_text.text(0, 0.5, gt_text, fontsize=20, linespacing=1.6)
+
+    # malignant probabilities
+    text = "Probabilities\n\n"
+    text += "MALIGNANT\n"
+    for idx in malignant_classes:
+        text += f"• {class_names[idx]}: {probs[idx].item()*100:.2f}%\n"
 
     # Input Image
     ax_img = fig.add_subplot(gs[1, 1])
@@ -494,12 +503,12 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     # Probabilities
     ax_prob = fig.add_subplot(gs[2, 0])
     ax_prob.axis("off")
-    text = "Probabilities\n\n"
-    for i in sorted_indices:
-        i = i.item()
-        text += f"{class_names[i]}: {probs[i].item()*100:.2f}%\n"
-    ax_prob.text(0, 1, text, va="top", fontsize=10)
 
+    text += "\nBENIGN\n"
+    for idx in benign_classes:
+        text += f"• {class_names[idx]}: {probs[idx].item()*100:.2f}%\n"
+    ax_prob.text(0, 1, text, va="top", fontsize=20, linespacing=1.6,)
+    
     # GradCAM
     ax_cam = fig.add_subplot(gs[2, 1])
     ax_cam.imshow(cam, cmap="jet")
@@ -508,7 +517,7 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
 
     # SHAP
     ax_shap = fig.add_subplot(gs[2, 2])
-    ax_shap.imshow(shap_map, cmap="jet")
+    ax_shap.imshow(shap_map, cmap="jet", aspect='equal')
     ax_shap.set_title("SHAP")
     ax_shap.axis("off")
 

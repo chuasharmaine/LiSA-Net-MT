@@ -13,61 +13,64 @@ import numpy as np
 import shap
 
 class SHAP:
-    def __init__(self, model, background_size=10):
+    def __init__(self, model, background_images=None):
         self.model = model
         self.model.eval()
-        self.background_size = background_size
+        self.background_images = background_images
 
-    def predict_fn(self, x_numpy):
-        # convert numpy to torch tensor
-        device = next(self.model.parameters()).device
-        x_tensor = torch.tensor(x_numpy, dtype=torch.float32, device=device)
-
-        with torch.no_grad():
-            output = self.model(x_tensor)
-            # multitask output
-            if isinstance(output, tuple):
-                _, cls_out = output
-            else:
-                cls_out = output
-
-            probs = torch.softmax(cls_out, dim=1)
-        return probs.detach().cpu().numpy()
+    def disable_inplace(self, model):
+        for module in model.modules():
+            if hasattr(module, "inplace"):
+                module.inplace = False
 
     def __call__(self, image):
         # image shape: [1, C, H, W]
         device = next(self.model.parameters()).device
-        image = image.to(device).detach()
+        input_tensor = image.to(device).detach().clone()
 
         # create simple background
-        background = torch.zeros((self.background_size, image.shape[1], image.shape[2], image.shape[3]), device=device).detach()
+        if self.background_images is None:
+            background = torch.zeros_like(image).repeat(10,1,1,1) * 0.5
+        else:
+            background = self.background_images.to(device)
 
         # SHAP explainer
-        explainer = shap.GradientExplainer(self.model, background)
-        shap_values = explainer.shap_values(image)
-        """
-        shap_values format
-        classification: list[num_classes]
-        each: [B,C,H,W]
-        """
+        try:
+            self.disable_inplace(self.model)
+            explainer = shap.GradientExplainer(self.model, background)
+            shap_values = explainer.shap_values(image)
+            """
+            shap_values format
+            classification: list[num_classes]
+            each: [B,C,H,W]
+            """
 
-        # choose predicted class
-        with torch.no_grad():
-            preds = self.model(image)
-            if isinstance(preds, tuple):
-                preds = preds[1]
-            probs = torch.softmax(preds, dim=1)
-            pred_class = torch.argmax(probs, dim=1).item()
-        if isinstance(shap_values, list):
-            shap_map = shap_values[pred_class][0]
-        else:
-            shap_map = shap_values[0]
+            # choose predicted class
+            with torch.no_grad():
+                preds = self.model(image)
+                if isinstance(preds, tuple):
+                    preds = preds[1]
+                probs = torch.softmax(preds, dim=1)
+                pred_class = torch.argmax(probs, dim=1).item()
+            if isinstance(shap_values, list):
+                shap_map = shap_values[pred_class][0]
+            else:
+                shap_map = shap_values[0]
 
-        # average channels if RGB
-        if shap_map.ndim == 3:
-            shap_map = np.mean(np.abs(shap_map), axis=0)
+            if len(shap_map.shape) == 4:
+                shap_map = shap_map[0]
 
-        # normalize
-        shap_map = (shap_map - shap_map.min()) / (shap_map.max() - shap_map.min() + 1e-8)
+            shap_map = np.sum(shap_map, axis=0)
 
-        return shap_map
+            # normalize
+            v_min, v_max = np.percentile(shap_map, [1,99])
+            shap_map = np.clip(shap_map,v_min,v_max)
+            shap_map = (shap_map - v_min) / (v_max - v_min + 1e-8)
+
+            return shap_map
+        
+        except Exception as e:
+            print(f"shap actual error: {e}")
+            return np.zeros((input_tensor.shape[2], input_tensor.shape[3]))
+
+
