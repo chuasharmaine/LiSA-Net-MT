@@ -368,8 +368,7 @@ def classification_inference(model, image, gt_label=None):
     ax.axis("off")
     plt.tight_layout()
     plt.show()
-
-def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None):
+def multitask_inference(model_seg, model_cls, image, image_path, model_name, gt_mask=None, gt_label=None):
     model_seg.eval()
     model_cls.eval()
 
@@ -470,6 +469,8 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     # output results
     fig = plt.figure(figsize=(18, 10))
     gs = gridspec.GridSpec(3, 4, figure=fig, height_ratios=[0.18,1,1])
+    fig = plt.figure(figsize=(18, 10))
+    fig.suptitle(f"Multitask Inference — {model_name}", fontsize=16, fontweight="bold")
 
     malignant_classes = [0, 2, 3] 
     benign_classes = [1, 4, 5, 6]
@@ -565,6 +566,12 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     ax_lime.axis("off")
 
     plt.tight_layout()
+    save_dir = os.path.join("inference_outputs", "multitask")
+    os.makedirs(save_dir, exist_ok=True)
+    img_name = f"{model_name}_{os.path.splitext(os.path.basename(image_path))[0]}_result.png"
+    save_path = os.path.join(save_dir, img_name)
+    fig.savefig(save_path, dpi=300, bbox_inches="tight")
+    print(f"\nSaved inference plot to: {save_path}")
     plt.show()
 
 def main():
@@ -675,13 +682,15 @@ def main():
         
         if args.task in ["classification", "multitask"]:
             labels_path = os.path.join(params["dataset_path"], args.task, "test", "labels.csv")
-
             if os.path.exists(labels_path):
                 labels_df = pd.read_csv(labels_path)
-                image_name = os.path.basename(image_path)
+                image_name = os.path.splitext(os.path.basename(image_path))[0]
                 row = labels_df[labels_df["image"] == image_name]
+
                 if len(row) > 0:
-                    gt_label = int(row.iloc[0]["label"])
+                    class_cols = ["MEL", "NV", "BCC", "AKIEC", "BKL", "DF", "VASC"]
+                    gt_vector = row.iloc[0][class_cols].values.astype(float)
+                    gt_label = int(np.argmax(gt_vector))
 
         # task selection
         if args.task == "segmentation":
@@ -689,7 +698,7 @@ def main():
         elif args.task == "classification":
             classification_inference(model, image, gt_label)
         else:
-            multitask_inference(model_seg, model_cls, image, gt_mask, gt_label)
+            multitask_inference(model_seg, model_cls, image, image_path, args.model, gt_mask, gt_label)
 
 if __name__ == '__main__':
     main()
