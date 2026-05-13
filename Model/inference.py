@@ -426,14 +426,72 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     input_tensor = image.detach()
     
     # SHAP
-    try:
-        shap = SHAP(forward_fn)
-        shap_map = shap(input_tensor)
+    # try:
+    #     shap = SHAP(forward_fn)
+    #     shap_map = shap(input_tensor)
 
+
+    # except Exception as e:
+    #     print(f"SHAP failed: {e}")
+    #     shap_map = np.zeros((224, 224))
+    # SHAP Emergency Bypass
+    # try:
+    #     shap_obj = SHAP(forward_fn)
+    #     raw_shap = shap_obj(input_tensor)
+
+    #     # convert to numpy
+    #     shap_map = np.array(raw_shap).squeeze()
+
+    #     print("SHAP RAW SHAPE:", shap_map.shape)
+
+    #     # if CHW
+    #     if shap_map.ndim == 3:
+    #         if shap_map.shape[0] in [1, 3]:
+    #             shap_map = np.sum(shap_map, axis=0)
+
+    #         # if HWC
+    #         elif shap_map.shape[-1] in [1, 3, 7]:
+    #             shap_map = np.sum(shap_map, axis=-1)
+
+    #     # if still weird shape
+    #     if shap_map.ndim != 2:
+    #         shap_map = shap_map.reshape(shap_map.shape[-2], shap_map.shape[-1])
+
+    #     # resize insurance
+    #     if shap_map.shape != (224, 224):
+    #         shap_map = cv2.resize(shap_map, (224, 224))
+
+    #     # normalize
+    #     shap_map = shap_map.astype(np.float32)
+    #     shap_map = (shap_map - shap_map.min()) / (
+    #         shap_map.max() - shap_map.min() + 1e-8
+    #     )
+    try:
+        shap_obj = SHAP(forward_fn)
+        raw_shap = shap_obj(input_tensor) # Ensure this returns a numpy array or tensor
+
+        # Convert to numpy and handle Pytorch tensors
+        if torch.is_tensor(raw_shap):
+            shap_map = raw_shap.detach().cpu().numpy()
+        else:
+            shap_map = np.array(raw_shap)
+
+        # 1. Handle Multi-class output (7, 3, 224, 224) or (7, 224, 224)
+        # Most SHAP explainers return an array for EACH class.
+        if shap_map.shape[0] == params_ISIC_2018["cls_classes"]:
+            shap_map = shap_map[pred_class] 
+
+        # 2. Collapse Color Channels (if 3, 224, 224)
+        if shap_map.ndim == 3:
+            shap_map = np.abs(shap_map).max(axis=0) # Take max importance across RGB
+
+        # 3. Final Resize and Normalization
+        shap_map = cv2.resize(shap_map, (224, 224))
+        shap_map = (shap_map - shap_map.min()) / (shap_map.max() - shap_map.min() + 1e-8)
 
     except Exception as e:
         print(f"SHAP failed: {e}")
-        shap_map = np.zeros((224, 224))
+        shap_map = np.zeros((224, 224), dtype=np.float32)
 
     # LIME
     try:
@@ -457,26 +515,32 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     else:
         category = "Benign"
 
-    # title
-    ax_title = fig.add_subplot(gs[0, :])
-    ax_title.axis("off")
-    title_str = f"Prediction: {class_names[pred_class]} ({category}) — {probs[pred_class].item()*100:.2f}%"
-    ax_title.text(0.5, 0.5, title_str, ha="center", fontsize=20, fontweight="bold")
+    # side panel for prediction and probabilities
+    ax_side = fig.add_subplot(gs[:, 0])
+    ax_side.axis("off")
 
-    # GT Class (text)
-    ax_gt_text = fig.add_subplot(gs[1, 0])
-    ax_gt_text.axis("off")
-    if gt_label is not None:
-        gt_text = f"GT Class:\n{class_names[gt_label]} ({category})"
-    else:
-        gt_text = "GT Class:\nN/A"
-    ax_gt_text.text(0, 0.5, gt_text, fontsize=20, linespacing=1.6)
+    ax_side.text(0.05, 0.88, r"$\mathbf{Prediction:}$", fontsize=18, fontweight='bold', va='top')
+    pred_str = f"{class_names[pred_class]} ({category})\n{probs[pred_class].item()*100:.2f}%"
+    ax_side.text(0.05, 0.85, pred_str, fontsize=18, va='top')
 
-    # malignant probabilities
-    text = "Probabilities\n\n"
-    text += "MALIGNANT\n"
+    # 2. Ground Truth (Bold Header)
+    ax_side.text(0.05, 0.75, r"$\mathbf{Ground\ Truth:}$", fontsize=18, fontweight='bold', va='top')
+    gt_str = f"{class_names[gt_label] if gt_label is not None else 'N/A'}"
+    ax_side.text(0.05, 0.72, gt_str, fontsize=18, va='top')
+
+    # 3. Probabilities (Bold Header)
+    ax_side.text(0.05, 0.62, r"$\mathbf{Probabilities:}$", fontsize=18, fontweight='bold', va='top')
+
+    # Construct the list as a single block to keep alignment easy
+    prob_text = "Malignant\n"
     for idx in malignant_classes:
-        text += f"• {class_names[idx]}: {probs[idx].item()*100:.2f}%\n"
+        prob_text += f"• {class_names[idx]}: {probs[idx].item()*100:.1f}%\n"
+
+    prob_text += "\nBenign\n"
+    for idx in benign_classes:
+        prob_text += f"• {class_names[idx]}: {probs[idx].item()*100:.1f}%\n"
+
+    ax_side.text(0.05, 0.59, prob_text, fontsize=16, va='top', linespacing=1.5)
 
     # Input Image
     ax_img = fig.add_subplot(gs[1, 1])
@@ -488,27 +552,18 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     ax_gt = fig.add_subplot(gs[1, 2])
     if gt_mask is not None:
         ax_gt.imshow(gt_mask.squeeze().cpu(), cmap="gray")
-        ax_gt.set_title("GT Mask")
+        ax_gt.set_title("Ground Truth Mask")
     else:
         ax_gt.imshow(seg_mask, cmap="gray")
-        ax_gt.set_title("GT Mask (N/A)")
+        ax_gt.set_title("Ground Truth Mask (N/A)")
     ax_gt.axis("off")
 
     # Pred Mask
     ax_pred = fig.add_subplot(gs[1, 3])
     ax_pred.imshow(seg_mask, cmap="gray")
-    ax_pred.set_title("Pred Mask")
+    ax_pred.set_title("Segmented Mask")
     ax_pred.axis("off")
 
-    # Probabilities
-    ax_prob = fig.add_subplot(gs[2, 0])
-    ax_prob.axis("off")
-
-    text += "\nBENIGN\n"
-    for idx in benign_classes:
-        text += f"• {class_names[idx]}: {probs[idx].item()*100:.2f}%\n"
-    ax_prob.text(0, 1, text, va="top", fontsize=20, linespacing=1.6,)
-    
     # GradCAM
     ax_cam = fig.add_subplot(gs[2, 1])
     ax_cam.imshow(cam, cmap="jet")
@@ -517,7 +572,7 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
 
     # SHAP
     ax_shap = fig.add_subplot(gs[2, 2])
-    ax_shap.imshow(shap_map, cmap="jet", aspect='equal')
+    ax_shap.imshow(shap_map, cmap="jet")
     ax_shap.set_title("SHAP")
     ax_shap.axis("off")
 
