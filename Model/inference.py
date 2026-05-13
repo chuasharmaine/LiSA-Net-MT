@@ -299,6 +299,26 @@ def tensor_to_image(tensor):
     image = (image - image.min()) / (image.max() - image.min() + 1e-8)
     return image
 
+def overlay_heatmap(image, heatmap, alpha=0.4, cmap="jet"):
+    """
+    image: HxWx3 (0–1 or 0–255)
+    heatmap: HxW (0–1)
+    """
+    if image.max() <= 1.0:
+        img = (image * 255).astype(np.uint8)
+    else:
+        img = image.astype(np.uint8)
+
+    heatmap = cv2.resize(heatmap, (img.shape[1], img.shape[0]))
+    heatmap = np.uint8(255 * heatmap)
+
+    heatmap_color = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+    heatmap_color = cv2.cvtColor(heatmap_color, cv2.COLOR_BGR2RGB)
+
+    overlay = cv2.addWeighted(img, 1 - alpha, heatmap_color, alpha, 0)
+
+    return overlay
+
 def segmentation_inference(model, image, gt_mask=None):
     model.eval()
 
@@ -400,6 +420,8 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     cam = gradcam(model_cls, image, pred_class)
     cam = cam.detach().cpu().squeeze().numpy()
     cam = (cam - cam.min()) / (cam.max() + 1e-8)
+    img_np = tensor_to_image(image)
+    cam_overlay = overlay_heatmap(img_np, cam, alpha=0.4)
 
     class ForwardEx(torch.nn.Module):
         def __init__(self, model, device):
@@ -429,43 +451,6 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     # try:
     #     shap = SHAP(forward_fn)
     #     shap_map = shap(input_tensor)
-
-
-    # except Exception as e:
-    #     print(f"SHAP failed: {e}")
-    #     shap_map = np.zeros((224, 224))
-    # SHAP Emergency Bypass
-    # try:
-    #     shap_obj = SHAP(forward_fn)
-    #     raw_shap = shap_obj(input_tensor)
-
-    #     # convert to numpy
-    #     shap_map = np.array(raw_shap).squeeze()
-
-    #     print("SHAP RAW SHAPE:", shap_map.shape)
-
-    #     # if CHW
-    #     if shap_map.ndim == 3:
-    #         if shap_map.shape[0] in [1, 3]:
-    #             shap_map = np.sum(shap_map, axis=0)
-
-    #         # if HWC
-    #         elif shap_map.shape[-1] in [1, 3, 7]:
-    #             shap_map = np.sum(shap_map, axis=-1)
-
-    #     # if still weird shape
-    #     if shap_map.ndim != 2:
-    #         shap_map = shap_map.reshape(shap_map.shape[-2], shap_map.shape[-1])
-
-    #     # resize insurance
-    #     if shap_map.shape != (224, 224):
-    #         shap_map = cv2.resize(shap_map, (224, 224))
-
-    #     # normalize
-    #     shap_map = shap_map.astype(np.float32)
-    #     shap_map = (shap_map - shap_map.min()) / (
-    #         shap_map.max() - shap_map.min() + 1e-8
-    #     )
 
     # except Exception as e:
     #     print(f"SHAP failed: {e}")
@@ -498,17 +483,17 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     ax_side.axis("off")
 
     # prediction
-    ax_side.text(0.05, 0.88, r"$\mathbf{Prediction:}$", fontsize=18, fontweight='bold', va='top')
+    ax_side.text(0.05, 0.85, r"$\mathbf{Prediction:}$", fontsize=18, fontweight='bold', va='top')
     pred_str = f"{class_names[pred_class]} ({category})\n{probs[pred_class].item()*100:.2f}%"
-    ax_side.text(0.05, 0.85, pred_str, fontsize=18, va='top')
+    ax_side.text(0.05, 0.82, pred_str, fontsize=18, va='top')
 
     # ground truth label
-    ax_side.text(0.05, 0.75, r"$\mathbf{Ground\ Truth:}$", fontsize=18, fontweight='bold', va='top')
+    ax_side.text(0.05, 0.72, r"$\mathbf{Ground\ Truth:}$", fontsize=18, fontweight='bold', va='top')
     gt_str = f"{class_names[gt_label] if gt_label is not None else 'N/A'}"
-    ax_side.text(0.05, 0.72, gt_str, fontsize=18, va='top')
+    ax_side.text(0.05, 0.69, gt_str, fontsize=18, va='top')
 
     # probabilities list
-    ax_side.text(0.05, 0.62, r"$\mathbf{Probabilities:}$", fontsize=18, fontweight='bold', va='top')
+    ax_side.text(0.05, 0.59, r"$\mathbf{Probabilities:}$", fontsize=18, fontweight='bold', va='top')
 
     prob_text = "Malignant\n"
     for idx in malignant_classes:
@@ -518,7 +503,20 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     for idx in benign_classes:
         prob_text += f"• {class_names[idx]}: {probs[idx].item()*100:.1f}%\n"
 
-    ax_side.text(0.05, 0.59, prob_text, fontsize=16, va='top', linespacing=1.5)
+    ax_side.text(0.05, 0.56, prob_text, fontsize=16, va='top', linespacing=1.5)
+    
+    legend_text = (
+        "\n\n\n\n\n\n"
+        r"$\mathbf{Grad-CAM:}$" + "\n"
+        "• Red: High Importance\n"
+        "• Green: Moderate Importance\n"
+        "• Blue: Low Importance\n\n"
+        r"$\mathbf{LIME:}$" + "\n"
+        "• Blue: Positive (Supports Prediction)\n"
+        "• Red: Negative (Against Prediction)"
+    )
+    
+    ax_side.text(0.05, 0.30, legend_text, fontsize=10, va='top', linespacing=1.3)
 
     # input image
     ax_img = fig.add_subplot(gs[1, 1])
@@ -546,6 +544,12 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     ax_cam = fig.add_subplot(gs[2, 1])
     ax_cam.imshow(cam, cmap="jet")
     ax_cam.set_title("Grad-CAM")
+    ax_cam.axis("off")
+
+    # GradCAM
+    ax_cam = fig.add_subplot(gs[2, 2])
+    ax_cam.imshow(cam_overlay)
+    ax_cam.set_title("Grad-CAM Overlay")
     ax_cam.axis("off")
 
     # # SHAP
