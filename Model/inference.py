@@ -469,7 +469,6 @@ def multitask_inference(model_seg, model_cls, image, image_path, model_name, gt_
     # output results
     fig = plt.figure(figsize=(18, 10))
     gs = gridspec.GridSpec(3, 4, figure=fig, height_ratios=[0.18,1,1])
-    fig = plt.figure(figsize=(18, 10))
     fig.suptitle(f"Multitask Inference — {model_name}", fontsize=16, fontweight="bold")
 
     malignant_classes = [0, 2, 3] 
@@ -572,7 +571,7 @@ def multitask_inference(model_seg, model_cls, image, image_path, model_name, gt_
     save_path = os.path.join(save_dir, img_name)
     fig.savefig(save_path, dpi=300, bbox_inches="tight")
     print(f"\nSaved inference plot to: {save_path}")
-    plt.show()
+    # plt.show()
 
 def main():
     # analyse console arguments
