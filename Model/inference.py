@@ -466,32 +466,10 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     #     shap_map = (shap_map - shap_map.min()) / (
     #         shap_map.max() - shap_map.min() + 1e-8
     #     )
-    try:
-        shap_obj = SHAP(forward_fn)
-        raw_shap = shap_obj(input_tensor) # Ensure this returns a numpy array or tensor
 
-        # Convert to numpy and handle Pytorch tensors
-        if torch.is_tensor(raw_shap):
-            shap_map = raw_shap.detach().cpu().numpy()
-        else:
-            shap_map = np.array(raw_shap)
-
-        # 1. Handle Multi-class output (7, 3, 224, 224) or (7, 224, 224)
-        # Most SHAP explainers return an array for EACH class.
-        if shap_map.shape[0] == params_ISIC_2018["cls_classes"]:
-            shap_map = shap_map[pred_class] 
-
-        # 2. Collapse Color Channels (if 3, 224, 224)
-        if shap_map.ndim == 3:
-            shap_map = np.abs(shap_map).max(axis=0) # Take max importance across RGB
-
-        # 3. Final Resize and Normalization
-        shap_map = cv2.resize(shap_map, (224, 224))
-        shap_map = (shap_map - shap_map.min()) / (shap_map.max() - shap_map.min() + 1e-8)
-
-    except Exception as e:
-        print(f"SHAP failed: {e}")
-        shap_map = np.zeros((224, 224), dtype=np.float32)
+    # except Exception as e:
+    #     print(f"SHAP failed: {e}")
+    #     shap_map = np.zeros((224, 224), dtype=np.float32)
 
     # LIME
     try:
@@ -519,19 +497,19 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     ax_side = fig.add_subplot(gs[:, 0])
     ax_side.axis("off")
 
+    # prediction
     ax_side.text(0.05, 0.88, r"$\mathbf{Prediction:}$", fontsize=18, fontweight='bold', va='top')
     pred_str = f"{class_names[pred_class]} ({category})\n{probs[pred_class].item()*100:.2f}%"
     ax_side.text(0.05, 0.85, pred_str, fontsize=18, va='top')
 
-    # 2. Ground Truth (Bold Header)
+    # ground truth label
     ax_side.text(0.05, 0.75, r"$\mathbf{Ground\ Truth:}$", fontsize=18, fontweight='bold', va='top')
     gt_str = f"{class_names[gt_label] if gt_label is not None else 'N/A'}"
     ax_side.text(0.05, 0.72, gt_str, fontsize=18, va='top')
 
-    # 3. Probabilities (Bold Header)
+    # probabilities list
     ax_side.text(0.05, 0.62, r"$\mathbf{Probabilities:}$", fontsize=18, fontweight='bold', va='top')
 
-    # Construct the list as a single block to keep alignment easy
     prob_text = "Malignant\n"
     for idx in malignant_classes:
         prob_text += f"• {class_names[idx]}: {probs[idx].item()*100:.1f}%\n"
@@ -542,13 +520,13 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
 
     ax_side.text(0.05, 0.59, prob_text, fontsize=16, va='top', linespacing=1.5)
 
-    # Input Image
+    # input image
     ax_img = fig.add_subplot(gs[1, 1])
     ax_img.imshow(tensor_to_image(image))
     ax_img.set_title("Input")
     ax_img.axis("off")
 
-    # GT Mask
+    # ground truth mask 
     ax_gt = fig.add_subplot(gs[1, 2])
     if gt_mask is not None:
         ax_gt.imshow(gt_mask.squeeze().cpu(), cmap="gray")
@@ -558,7 +536,7 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
         ax_gt.set_title("Ground Truth Mask (N/A)")
     ax_gt.axis("off")
 
-    # Pred Mask
+    # predicted mask
     ax_pred = fig.add_subplot(gs[1, 3])
     ax_pred.imshow(seg_mask, cmap="gray")
     ax_pred.set_title("Segmented Mask")
@@ -570,11 +548,11 @@ def multitask_inference(model_seg, model_cls, image, gt_mask=None, gt_label=None
     ax_cam.set_title("Grad-CAM")
     ax_cam.axis("off")
 
-    # SHAP
-    ax_shap = fig.add_subplot(gs[2, 2])
-    ax_shap.imshow(shap_map, cmap="jet")
-    ax_shap.set_title("SHAP")
-    ax_shap.axis("off")
+    # # SHAP
+    # ax_shap = fig.add_subplot(gs[2, 2])
+    # ax_shap.imshow(shap_map, cmap="jet")
+    # ax_shap.set_title("SHAP")
+    # ax_shap.axis("off")
 
     # LIME
     ax_lime = fig.add_subplot(gs[2, 3])
