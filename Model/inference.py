@@ -17,6 +17,7 @@ import pandas as pd
 import cv2
 import lib.transforms.two as my_transforms
 import matplotlib.gridspec as gridspec
+import datetime
 
 from lib import utils, dataloaders, models, metrics, testers
 from lib.explainability.gradcam import GradCam
@@ -319,7 +320,7 @@ def overlay_heatmap(image, heatmap, alpha=0.4, cmap="jet"):
 
     return overlay
 
-def segmentation_inference(model, image, gt_mask=None):
+def segmentation_inference(model, image, image_path, gt_mask=None):
     model.eval()
 
     with torch.no_grad():
@@ -345,9 +346,16 @@ def segmentation_inference(model, image, gt_mask=None):
     ax[2].set_title("Predicted Mask")
     ax[2].axis("off")
     plt.tight_layout()
+    save_dir = os.path.join("inference_outputs", "segmentation_masks")
+    os.makedirs(save_dir, exist_ok=True)
+    img_name = os.path.splitext(os.path.basename(image_path))[0]
+    mask_save_path = os.path.join(save_dir, f"{img_name}_mask.png")
+    mask_np = seg_mask.numpy().astype(np.uint8) * 255
+    cv2.imwrite(mask_save_path, mask_np)
+    print(f"Saved mask: {mask_save_path}")
     plt.show()
 
-def classification_inference(model, image, gt_label=None):
+def classification_inference(model, image, image_path, gt_label=None):
     model.eval()
 
     with torch.no_grad():
@@ -367,7 +375,23 @@ def classification_inference(model, image, gt_label=None):
     ax.set_title("Original Image")
     ax.axis("off")
     plt.tight_layout()
+    log_dir = os.path.join("inference_outputs", "classification_logs")
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, "results.txt")
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    img_name = os.path.splitext(os.path.basename(image_path))[0]
+    log_line = (
+        f"[{timestamp}] "
+        f"{img_name} | "
+        f"GT: {gt_label if gt_label is not None else 'N/A'} | "
+        f"PRED: {pred_class} | "
+        f"CONF: {probs[pred_class].item()*100:.2f}%\n"
+    )
+    with open(log_path, "a") as f:
+        f.write(log_line)
+    print(f"Saved classification log: {log_path}")
     plt.show()
+
 def multitask_inference(model_seg, model_cls, image, image_path, model_name, gt_mask=None, gt_label=None):
     model_seg.eval()
     model_cls.eval()
@@ -471,8 +495,6 @@ def multitask_inference(model_seg, model_cls, image, image_path, model_name, gt_
     gs = gridspec.GridSpec(3, 4, figure=fig, height_ratios=[0.18,1,1])
     fig.suptitle(f"Multitask Inference — {model_name}", fontsize=16, fontweight="bold")
 
-    malignant_classes = [0, 2, 3] 
-    benign_classes = [1, 4, 5, 6]
     if pred_class in malignant_classes:
         category = "Malignant" 
     else:
@@ -693,9 +715,9 @@ def main():
 
         # task selection
         if args.task == "segmentation":
-            segmentation_inference(model, image, gt_mask)
+            segmentation_inference(model, image, image_path, gt_mask)
         elif args.task == "classification":
-            classification_inference(model, image, gt_label)
+            classification_inference(model, image, image_path, gt_label)
         else:
             multitask_inference(model_seg, model_cls, image, image_path, args.model, gt_mask, gt_label)
 
