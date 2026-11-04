@@ -17,7 +17,10 @@ class GradCam:
         self.gradients = None
         self.activations = None
 
-        target_layer.register_forward_hook(self.forward_hook)
+        self.handle = target_layer.register_forward_hook(self.forward_hook)
+
+    def close(self):
+        self.handle.remove()
 
     def forward_hook(self, module, input, output):
         self.activations = output
@@ -28,6 +31,7 @@ class GradCam:
         self.gradients = gradient
 
     def __call__(self, model, input_image, class_idx):
+        self.gradients = None
         model.zero_grad()
         output = self.model(input_image)
         if isinstance(output, dict):
@@ -45,7 +49,7 @@ class GradCam:
         cam = (weights * self.activations).sum(dim=1)
         cam = torch.relu(cam)
         # upsample to input size
-        cam = F.interpolate(cam.unsqueeze(1), size=(224, 224), mode="bilinear", align_corners=False).squeeze()
+        cam = F.interpolate(cam.unsqueeze(1), size=input_image.shape[-2:], mode="bilinear", align_corners=False).squeeze()
         
         # normalize
         cam = cam - cam.min()

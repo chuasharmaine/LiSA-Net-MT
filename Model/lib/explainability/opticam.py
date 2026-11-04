@@ -38,7 +38,8 @@ class OptiCam:
         maximum = mask.amax(dim=(-2, -1), keepdim=True)
         return (mask - minimum) / (maximum - minimum + 1e-8)
 
-    def __call__(self, image, class_idx):
+    def __call__(self, image, class_idx, progress_callback=None):
+        image = image.detach()
         handle = self.target_layer.register_forward_hook(self._capture)
         try:
             with torch.no_grad():
@@ -51,19 +52,25 @@ class OptiCam:
 
         weights = nn.Parameter(torch.zeros(features.shape[1], device=image.device))
         optimizer = torch.optim.Adam([weights], lr=self.learning_rate)
-        for _ in range(self.steps):
+        for iteration in range(self.steps):
             optimizer.zero_grad()
             coefficients = torch.softmax(weights, dim=0).view(1, -1, 1, 1)
             mask = (coefficients * features).sum(dim=1, keepdim=True)
             mask = F.interpolate(mask, size=image.shape[-2:], mode="bilinear", align_corners=False)
             mask = self._normalize(mask)
             logits = self._classification_output(self.model(image * mask))
+            if progress_callback is not None:
+                progress_callback(iteration, mask.squeeze().detach().cpu(), float(logits[0, class_idx].detach()))
             loss = -logits[0, class_idx]
-            loss.backward()
+            weights.grad, = torch.autograd.grad(loss, weights)
             optimizer.step()
 
         with torch.no_grad():
             coefficients = torch.softmax(weights, dim=0).view(1, -1, 1, 1)
             mask = (coefficients * features).sum(dim=1, keepdim=True)
             mask = F.interpolate(mask, size=image.shape[-2:], mode="bilinear", align_corners=False)
-            return self._normalize(mask).squeeze().detach()
+            mask = self._normalize(mask)
+            if progress_callback is not None:
+                logits = self._classification_output(self.model(image * mask))
+                progress_callback(self.steps, mask.squeeze().detach().cpu(), float(logits[0, class_idx]))
+            return mask.squeeze().detach()

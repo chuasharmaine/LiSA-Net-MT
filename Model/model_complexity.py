@@ -84,7 +84,8 @@ def build_model(opt):
             scaling_version=opt["scaling_version"],
             segmentation=opt["segmentation"],
             classification=opt["classification"],
-            seg_guided_cls=opt["seg_guided_cls"]
+            seg_guided_cls=opt["seg_guided_cls"],
+            cls_head_variant=opt.get("cls_head_variant", "baseline")
         )
 
     elif name == "MBDCNN":
@@ -140,7 +141,8 @@ if __name__ == "__main__":
 
     base_opt = {
         "in_channels": 3,
-        "seg_classes": 1,
+        # Match train.py multitask/segmentation configuration.
+        "seg_classes": 2,
         "cls_classes": 2,
         "img_size": 224,
         "dimension": "2d",
@@ -161,11 +163,20 @@ if __name__ == "__main__":
         ("EfficientNetV2", "classification"),
         ("MobileNetV3", "classification"),
         ("LiSANetMT_CLS", "classification"),
+        ("LiSANetMT_CLS_LESION_FUSION", "classification"),
+        ("LiSANetMT_CLS_LARGER_MLP", "classification"),
+        ("LiSANetMT_CLS_AVGMAX", "classification"),
+        ("LiSANetMT_CLS_MULTISCALE", "classification"),
+        ("LiSANetMT_CLS_MULTISCALE_LARGER", "classification"),
+        ("LiSANetMT_CLS_PROJECTED_FUSION", "classification"),
+        ("LiSANetMT_CLS_PROJECTED_FUSION_SE", "classification"),
         # MULTITASK
         ("MBDCNN", "multitask"),
         ("BreastCancerMT", "multitask"),
         ("LiSANetMT_NORM", "multitask"),
         ("LiSANetMT_GUIDED", "multitask"),
+        ("LiSANetMT_LESION_FUSION", "multitask"),
+        ("LiSANetMT_LESION_FUSION_GUIDED", "multitask"),
     ]
 
     results = []
@@ -176,39 +187,38 @@ if __name__ == "__main__":
         opt = base_opt.copy()
         opt["task"] = task
 
-        if model_name == "LiSANetMT_SEG":
-            opt["model_name"] = "LiSANetMT"
-            opt["display_name"] = "LiSANetMT (SEG)"
-            opt["segmentation"] = True
-            opt["classification"] = False
-            opt["seg_guided_cls"] = False
+        lisanet_configs = {
+            "LiSANetMT_SEG": ("LiSANetMT (SEG)", True, False, False, "baseline"),
+            "LiSANetMT_CLS": ("LiSANetMT (CLS Base)", False, True, False, "baseline"),
+            "LiSANetMT_CLS_LESION_FUSION": ("CLS Lesion Fusion", False, True, False, "lesion_fusion"),
+            "LiSANetMT_CLS_LARGER_MLP": ("CLS Larger MLP", False, True, False, "larger_mlp"),
+            "LiSANetMT_CLS_AVGMAX": ("CLS AVG MAX", False, True, False, "avgmax"),
+            "LiSANetMT_CLS_MULTISCALE": ("CLS Multiscale", False, True, False, "multiscale"),
+            "LiSANetMT_CLS_MULTISCALE_LARGER": ("CLS Multiscale + Larger", False, True, False, "multiscale_larger"),
+            "LiSANetMT_CLS_PROJECTED_FUSION": ("CLS Projected Fusion", False, True, False, "projected_fusion"),
+            "LiSANetMT_CLS_PROJECTED_FUSION_SE": ("CLS Projected Fusion SE", False, True, False, "projected_fusion_se"),
+            "LiSANetMT_NORM": ("LiSANetMT", True, True, False, "baseline"),
+            "LiSANetMT_GUIDED": ("LiSANetMT Seg-Guided", True, True, True, "baseline"),
+            "LiSANetMT_LESION_FUSION": ("LiSANetMT Lesion Fusion", True, True, False, "lesion_fusion"),
+            "LiSANetMT_LESION_FUSION_GUIDED": ("LiSANetMT LF Seg-Guided", True, True, True, "lesion_fusion"),
+        }
 
-        elif model_name == "LiSANetMT_CLS":
+        if model_name in lisanet_configs:
+            display_name, segmentation, classification, guided, variant = lisanet_configs[model_name]
             opt["model_name"] = "LiSANetMT"
-            opt["display_name"] = "LiSANetMT (CLS)"
-            opt["segmentation"] = False
-            opt["classification"] = True
-            opt["seg_guided_cls"] = False
-
-        elif model_name == "LiSANetMT_NORM":
-            opt["model_name"] = "LiSANetMT"
-            opt["display_name"] = "LiSANetMT (NORM)"
-            opt["segmentation"] = True
-            opt["classification"] = True
-            opt["seg_guided_cls"] = False
-
-        elif model_name == "LiSANetMT_GUIDED":
-            opt["model_name"] = "LiSANetMT"
-            opt["display_name"] = "LiSANetMT (GUIDED)"
-            opt["segmentation"] = True
-            opt["classification"] = True
-            opt["seg_guided_cls"] = True
+            opt["display_name"] = display_name
+            opt["segmentation"] = segmentation
+            opt["classification"] = classification
+            opt["seg_guided_cls"] = guided
+            opt["cls_head_variant"] = variant
 
         else:
             opt["model_name"] = model_name
             opt["display_name"] = model_name
             opt["segmentation"] = True
             opt["classification"] = True
+            opt["seg_guided_cls"] = False
+            opt["cls_head_variant"] = "baseline"
 
         try:
             flops, params = get_model_complexity(opt)
@@ -232,6 +242,3 @@ if __name__ == "__main__":
             f"{r['params(M)']:.2f} M | "
             f"{r['flops(G)']:.2f} GFLOPs"
         )
-
-
-
