@@ -112,6 +112,7 @@ def main():
     })
     utils.reproducibility(params["seed"], params["deterministic"], params["benchmark"])
     device = torch.device("cuda:0" if params["cuda"] and torch.cuda.is_available() else "cpu")
+    params["device"] = device
 
     model = models.get_model(params)
     checkpoint = torch.load(args.pretrain_weight, map_location=device, weights_only=False)
